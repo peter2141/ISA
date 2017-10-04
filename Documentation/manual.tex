@@ -1,0 +1,82 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[left=2cm,text={17cm,24cm},top=3cm]{geometry}
+\usepackage[slovak]{babel}
+\usepackage[]{opensans}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{color}
+\usepackage[unicode,colorlinks,hyperindex,plainpages=false,urlcolor=black,linkcolor=black,citecolor=black]{hyperref}
+
+
+\providecommand{\uv}[1]{\quotedblbase #1\textquotedblleft}
+
+\clubpenalty=10000
+\widowpenalty=10000
+
+\begin{document}
+
+
+%titlepage
+\begin{titlepage}
+\begin{center}
+	\thispagestyle{empty}
+	\textsc{\Huge Vysoké učení technické v~Brně\\[0.4em]
+			\huge Fakulta informačních technologií}\\
+	\vspace{\stretch{0.382}}
+	{\LARGE 
+	%Typografie a publikování\,--\,4. projekt\\[0.4em]
+	Síťové aplikace a správa sítí\\[0.4em]
+	\Huge 
+	POP3 server}
+	\vspace{\stretch{0.618}}
+\end{center}
+{\LARGE \today \hfill Peter Šuhaj}
+\end{titlepage}	
+
+%obsah
+\setlength{\parskip}{0pt}
+
+{\hypersetup{hidelinks}\tableofcontents}
+
+\setlength{\parskip}{0pt}
+
+\newpage
+
+%text
+\section{Úvodní strana}
+
+Název práce umístěte do zlatého řezu a nezapomeňte uvést dnešní datum a vaše jméno a přijímení.
+
+\section{Tabulky}
+
+Pro sázení tabulek můžeme použít buď prostředí \texttt{tabbing} nebo prostředí \texttt{tabular}.
+
+
+DDoS(Distributed denial of service) je útok, kde útočníci snažia vyčerpať dostupné zdroje obete. Základom je DoS útok, ktorý Do útoku je možné sa zapojiť dobrovoľne, kedy účastníci pomocou dostupných sowtwarov vykonávajú útok, alebo nakazením počítačov, kde útočník nakazí počítače a pomocou nich prevedie útok. V tomto prípade sieť počítačov sa skladá zo zombies a slave zombies, útočník ovláda len master zombies, ďalej master zombies ovládajú zombies\cite{cstugWeb}. 
+
+V dnešnej dobe sa DDoS často pužíva na zneprístupnenie rôznych internetových služieb. Bežným užívatelom sú dostupné bezplatné programy. Najčastejšie pužívaným je LOIC(Low orbit ion cannon), ktorý bombarduje server s TCP a UDP paketmi\cite{Rybicka}, čím sa vyťaženie serveru zvyšuje a pri veľkom množstve žiadostí už nevie oblúžiť klentov. Útok je možné aj zakúpiť na čiernom trhu, týždeň dlhý útok stojí 150\$\cite{Eikh}. Ako vidieť, možnosť DDoS útoku je dostupný skoro každému.
+
+Summa summarum, DDoS útoky nie sú tým najhorším útokom, ale môžu spôsobiť mnoho nepríjemností. fasz
+
+
+
+
+\newpage
+
+
+%literatura
+\makeatletter
+%\def\@openbib@code{\addcontentsline{toc}{chapter}{Literatúra}}
+\makeatother
+\bibliographystyle{czechiso}
+
+\begin{flushleft}
+\bibliography{citace}
+\end{flushleft}
+
+\end{document}
+
+
