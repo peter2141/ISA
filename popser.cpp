@@ -14,6 +14,7 @@
 #include <streambuf>
 #include <sstream>
 #include <fcntl.h>
+#include <openssl/md5.h>
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -213,6 +214,9 @@ int main(int argc, char **argv){
 	cout << name << endl;
 
 	//experiment md5
+	unsigned char md5[MD5_DIGEST_LENGTH];
+	string asd = "qwerty";
+	MD5((unsigned char *)asd.c_str(),asd.size(),md5);
 	
 
 
