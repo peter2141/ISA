@@ -215,7 +215,7 @@ int main(int argc, char **argv){
 	cout << time(NULL) << endl;
 	cout << getpid() << endl;	
 	char name[100];
-	getdomainname(name,100);//test on merlin, co ak neni domain name????
+	gethostname(name,100);//test on merlin, co ak neni domain name????
 	cout << name << endl;
 
 	//experiment md5
