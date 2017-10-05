@@ -104,6 +104,16 @@ class Arguments{
 
 //funkcia pre vlakna=klienty
 void* doSth(void *arg){
+	
+
+
+
+
+
+
+
+
+
 	//odpojime thread, netreba nanho cakat v hlavnom threade
 	pthread_detach(pthread_self());
 	//lokalna premenna pre socket
@@ -193,6 +203,17 @@ int main(int argc, char **argv){
 		cerr << "Chyba pri nastaveni socketu na pasivny(funkcia listen())." << endl;
 		exit(1);
 	}
+
+
+	//experimenty pre pid, time, md5
+	cout << time(NULL) << endl;
+	cout << getpid() << endl;	
+	char name[100];
+	getdomainname(name,100);//test on merlin, co ak neni domain name????
+	cout << name << endl;
+
+	//experiment md5
+	
 
 
 	//cyklus pre accept?? TODO 
