@@ -159,7 +159,12 @@ void* doSth(void *arg){
     return (NULL);
 }
 
-
+void print_md5_sum(unsigned char* md) {
+    int i;
+    for(i=0; i <MD5_DIGEST_LENGTH; i++) {
+            printf("%02x",md[i]);
+    }
+}
 
 
 int main(int argc, char **argv){
@@ -218,6 +223,17 @@ int main(int argc, char **argv){
 	string asd = "qwerty";
 	MD5((unsigned char *)asd.c_str(),asd.size(),md5);
 	
+	char mdString[33];
+ 
+    	for(int i = 0; i < 16; i++)
+		sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
+ 
+    	printf("md5 digest: %s\n", mdString);
+
+	//string fasz(md5);
+	//md5[MD5_DIGEST_LENGTH]='\0';
+	//print_md5_sum(md5);	
+//	cout << "hash: " << md5 << endl;
 
 
 	//cyklus pre accept?? TODO 
