@@ -15,11 +15,15 @@
 #include <sstream>
 #include <fcntl.h>
 #include <openssl/md5.h>
+#include <csignal>
 
 #define BUFSIZE  1024
 #define QUEUE	2
 
 using namespace std;
+
+//premenna pre zaznamenie signalu SIGINT
+static int volatile geci = 0;
 
 //trieda pre spracovanie argumentov
 class Arguments{
@@ -105,28 +109,12 @@ class Arguments{
 
 //funkcia pre vlakna=klienty
 void* doSth(void *arg){
-	
-
-
-
-
-
-
-
-
-
 	//odpojime thread, netreba nanho cakat v hlavnom threade
 	pthread_detach(pthread_self());
 	//lokalna premenna pre socket
 	int acceptSocket;
 	//sucket castujeme anspat na int
 	acceptSocket = *((int *) arg);
-	//nastavime socket ako nelbokujuci
-	int flags = fcntl(acceptSocket, F_GETFL, 0);
-	if ((fcntl(acceptSocket, F_SETFL, flags | O_NONBLOCK))<0){
-		perror("ERROR: fcntl");
-		exit(EXIT_FAILURE);								
-	}
 	//premenna pre buffer
 	char buff[BUFSIZE];
 		//smycka
@@ -159,12 +147,23 @@ void* doSth(void *arg){
     return (NULL);
 }
 
-void print_md5_sum(unsigned char* md) {
+/*void print_md5_sum(unsigned char* md) {
     int i;
     for(i=0; i <MD5_DIGEST_LENGTH; i++) {
             printf("%02x",md[i]);
     }
+}*/
+
+
+
+// SIGINT handler
+void signalHandler(int x)
+{
+	
+	geci = 1;
+	//exit(x);
 }
+
 
 
 int main(int argc, char **argv){
@@ -172,9 +171,10 @@ int main(int argc, char **argv){
     Arguments args;
     //kontrola parametrov
     args.parseArgs(argc,argv);
-    //TODO sietova komunikacia,kontrola zadanych ciest,suborov
+    //TODO kontrola zadanych ciest,suborov
+
+
     
-    cout << args.port() << endl;
 
 
     int listenSocket,acceptSocket;
@@ -210,6 +210,15 @@ int main(int argc, char **argv){
 		exit(1);
 	}
 
+	int flags = fcntl(listenSocket, F_GETFL, 0);
+	if ((fcntl(listenSocket, F_SETFL, flags | O_NONBLOCK))<0){
+		perror("ERROR: fcntl");
+		exit(EXIT_FAILURE);								
+	}
+
+	
+
+
 
 	//experimenty pre pid, time, md5
 	cout << time(NULL) << endl;
@@ -218,8 +227,10 @@ int main(int argc, char **argv){
 	gethostname(name,100);//test on merlin, co ak neni domain name????
 	cout << name << endl;
 
-	//experiment md5
-	unsigned char md5[MD5_DIGEST_LENGTH];
+
+	//experiment md5 working on merlin
+	//------------------------------------------------------
+	/*unsigned char md5[MD5_DIGEST_LENGTH];
 	string asd = "qwerty";
 	MD5((unsigned char *)asd.c_str(),asd.size(),md5);
 	
@@ -228,36 +239,58 @@ int main(int argc, char **argv){
     	for(int i = 0; i < 16; i++)
 		sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
  
-    	printf("md5 digest: %s\n", mdString);
+    	printf("md5 digest: %s\n", mdString);*/
+    //alebo funkcia ntohl
 
-	//string fasz(md5);
-	//md5[MD5_DIGEST_LENGTH]='\0';
-	//print_md5_sum(md5);	
-//	cout << "hash: " << md5 << endl;
+    //------------------------------------------------------
+
+	//priprava pre select
+	fd_set set;
+	FD_ZERO(&set);
+	FD_SET(listenSocket, &set);
+
+
 
 
 	//cyklus pre accept?? TODO 
-	while(1){
-		if ((acceptSocket = accept(listenSocket, (struct sockaddr*)&client, &clientLen)) < 0){
-			cerr << "Chyba pri pripajani." << endl;
-			exit(1);
+	while(1 && geci==0){
+
+		//select
+		if (select(listenSocket + 1, &set, NULL, NULL, NULL) == -1){
+			cerr << "Chyba pri select()." << endl;
 		}
 
+
+		if ((acceptSocket = accept(listenSocket, (struct sockaddr*)&client, &clientLen)) < 0){
+			cerr << "Chyba pri pripajani." << endl;
+			//exit(1);
+		}
+
+		//nastavime socket ako nelbokujuci
+		int flags = fcntl(acceptSocket, F_GETFL, 0);
+			if ((fcntl(acceptSocket, F_SETFL, flags | O_NONBLOCK))<0){
+				cerr << "ERROR: fcntl" << endl;
+				close(acceptSocket);
+				//exit(EXIT_FAILURE);								
+			}
 		//vytvorenie vlakna
 		pthread_t myThread;
 		if((pthread_create(&myThread, NULL, &doSth, &acceptSocket)) != 0){
 			cerr << "Chyba pri vytvarani vlakna" << endl;
-			exit(1);
+			close(acceptSocket);
+			//exit(1);
 		}
 
 
 	}
 
+	//signal handler
+	signal(SIGINT, signalHandler);
 
 
-
+	//zatvorenie socketu
 	close(listenSocket);
 
-    
-    return 0;
+    exit(0);
+  //  return 0;
 }
