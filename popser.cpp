@@ -16,6 +16,8 @@
 #include <fcntl.h>
 #include <openssl/md5.h>
 #include <csignal>
+#include <regex>
+#include <locale> 
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -24,6 +26,53 @@ using namespace std;
 
 //premenna pre zaznamenie signalu SIGINT
 static int volatile geci = 0;
+
+//enum pre switch ktory indikuje stav
+enum states {
+	auth,
+	trans,
+	update
+};
+
+//enum pre switch pri spracovani prikazov
+enum commands{
+	user,
+	pass,
+	apop,
+	stat,
+	list,
+	retr,
+	dele,
+	noop,
+	rset,
+	uidl,
+	quit
+};
+
+
+//konverzia retazcov stavu serveru na hodnoty v enum k pouzitiou v case
+states hashState(string state){
+	if(!state.compare("authentication")) return auth;
+	if(!state.compare("transaction")) return trans;
+	if(!state.compare("update")) return update;
+}
+
+//konverzia retazcov prikazov na hodnoty v enum k pouzitiou v case
+commands hashCommand(string command){
+	if (!command.compare("user")) return user;
+	if (!command.compare("pass")) return pass;
+	if (!command.compare("apop")) return apop;
+	if (!command.compare("stat")) return stat;
+	if (!command.compare("list")) return list;
+	if (!command.compare("retr")) return retr;
+	if (!command.compare("dele")) return dele;
+	if (!command.compare("noop")) return noop;
+	if (!command.compare("rset")) return rset;
+	if (!command.compare("uidl")) return uidl;
+	if (!command.compare("quit")) return quit;
+}
+
+
 
 //trieda pre spracovanie argumentov
 class Arguments{
@@ -109,41 +158,133 @@ class Arguments{
 
 //funkcia pre vlakna=klienty
 void* doSth(void *arg){
+	
 	//odpojime thread, netreba nanho cakat v hlavnom threade
 	pthread_detach(pthread_self());
+	
 	//lokalna premenna pre socket
 	int acceptSocket;
+	
 	//sucket castujeme anspat na int
 	acceptSocket = *((int *) arg);
+	
 	//premenna pre buffer
 	char buff[BUFSIZE];
-		//smycka
-		for (;;)		
-		{					
-			int res = recv(acceptSocket, buff, BUFSIZE,0);				
-			if (res > 0)
-			{
-				buff[res] = '\0';
-				printf("%s",buff);					
+	
+	//smycka pre zikavanie dat
+	while (1)		
+	{		
+		bzero(buff,BUFSIZE);//vynulovanie buffera			
+		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF		
+		if (res > 0)
+		{
+			
+			//vytvorenie string z Cstring kvoli jednoduchsej prace s retazcom
+			string message = buff;
+			
 
+			//kontrola dlzky spravy
+			if(message.size()>255){
+				send(acceptSocket,"-ERR Too long command\r\n",strlen("-ERR Too long command\r\n"),0);
+				continue;
 			}
-            else if (res == 0) 
-            { 
-                printf("INFO\n");
-				close(acceptSocket);						
-				break;
-            }
-            else if (errno == EAGAIN) // == EWOULDBLOCK
-            {
-                //printf(".");
-                continue;
-            }
-            else
-            {
-                perror("ERROR: recv");
-                exit(EXIT_FAILURE);
-            }
+
+			string command="";//retazec pre prikaz 
+			string argument="";//retazec pre argument
+			
+			// TODO osetrit picoviny (ak iba \n, atd) 
+			if(message.empty()){
+				continue;
+			}
+
+			if(message.size()<2){
+				send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+				continue;
+			}
+
+
+			//kontrola CRLF na konci
+			if((message.find("\r\n")) != message.size()-2){
+				send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+				continue;
+			}
+
+			//odstraneni CRLF na konci(neni potreba)
+			message.erase(message.length()-2,message.length());
+			
+			//rozdelenie prikazu a argumentu
+			bool space = false;
+			for (unsigned int i=0; i<(message.length()); i++)
+  			{
+  				//cout<< message.at(i);
+  				if(i!=0 && (message.at(i) == ' ')){
+  					if(space==true){
+  						argument += message.at(i);
+  					}
+  					else{
+  						space = true;
+  					}
+  					
+  					continue;
+
+  				}
+  				if(!space){
+  					command += message.at(i);
+  				}
+  				else{
+  					argument += message.at(i);
+  				}
+    			
+  			}
+
+
+  			//konvertovanie prikazu do lowercase
+  			locale loc;
+  			string commandLow = "";
+  			for(size_t i=0;i<command.length();i++){
+  				commandLow += tolower(command[i],loc);
+  			}
+
+  			cout << command.size() << endl;
+  			cout << argument.size() << endl;
+
+  			cout << command  << endl;
+
+  			cout<< argument << endl;//co s CRLF????
+
+  			cout << commandLow << endl;
+
+  			
+
+
+			//kontrola ci ma prikaz spravny format
+			/*if(!regex_match(buff,regex("^[a-zA-Z]+ {1}.*\n"))){
+				//osetrit send
+				send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+				continue;
+			}
+				*/
+
+
+
+
+		}
+        else if (res == 0) //ak sa klient odpoji -> odznacit subory na delete,odomknut zamok
+        { 
+            printf("Client disconnected\n");
+			close(acceptSocket);						
+			break;
         }
+        else if (errno == EAGAIN) // == EWOULDBLOCK
+        {
+            continue;
+        }
+        else//ak chyba
+        {
+            perror("ERROR: recv");
+            exit(EXIT_FAILURE);
+        }
+    }
     return (NULL);
 }
 
@@ -173,7 +314,20 @@ int main(int argc, char **argv){
     args.parseArgs(argc,argv);
     //TODO kontrola zadanych ciest,suborov
 
+	
 
+
+
+
+
+    //RESET
+	if(args.reset()){
+		;//TODO -reset a pokracovanie
+	}
+
+	if(args.crypt()){
+		;
+	}
     
 
 
@@ -244,6 +398,9 @@ int main(int argc, char **argv){
 
     //------------------------------------------------------
 
+	
+
+
 	//priprava pre select
 	fd_set set;
 	FD_ZERO(&set);
@@ -253,7 +410,7 @@ int main(int argc, char **argv){
 
 
 	//cyklus pre accept?? TODO 
-	while(1 && geci==0){
+	while(1){
 
 		//select
 		if (select(listenSocket + 1, &set, NULL, NULL, NULL) == -1){
@@ -263,22 +420,20 @@ int main(int argc, char **argv){
 
 		if ((acceptSocket = accept(listenSocket, (struct sockaddr*)&client, &clientLen)) < 0){
 			cerr << "Chyba pri pripajani." << endl;
-			//exit(1);
 		}
 
 		//nastavime socket ako nelbokujuci
 		int flags = fcntl(acceptSocket, F_GETFL, 0);
-			if ((fcntl(acceptSocket, F_SETFL, flags | O_NONBLOCK))<0){
-				cerr << "ERROR: fcntl" << endl;
-				close(acceptSocket);
-				//exit(EXIT_FAILURE);								
-			}
+		if ((fcntl(acceptSocket, F_SETFL, flags | O_NONBLOCK))<0){
+			cerr << "ERROR: fcntl" << endl;
+			close(acceptSocket);							
+		}
+		
 		//vytvorenie vlakna
 		pthread_t myThread;
 		if((pthread_create(&myThread, NULL, &doSth, &acceptSocket)) != 0){
 			cerr << "Chyba pri vytvarani vlakna" << endl;
 			close(acceptSocket);
-			//exit(1);
 		}
 
 
