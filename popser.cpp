@@ -46,7 +46,17 @@ enum commands{
 	noop,
 	rset,
 	uidl,
-	quit
+	quit,
+	notfound
+};
+
+// struktura pre premenne ktore sa maju predavat vlaknam
+struct threadVar{ 
+	int socket;
+	bool crypt;
+	string username;
+	string password;
+
 };
 
 
@@ -70,6 +80,7 @@ commands hashCommand(string command){
 	if (!command.compare("rset")) return rset;
 	if (!command.compare("uidl")) return uidl;
 	if (!command.compare("quit")) return quit;
+	return notfound;
 }
 
 
@@ -100,7 +111,7 @@ class Arguments{
 			}
 			//hladanie parametru -r(rezim 2)
 			if(argc==2 && (string(argv[1])=="-r")){
-				cerr << "reset" << endl;
+				cerr << "reset" << endl;//TODO reset
 				exit(0);
 			}
 			//klasicky rezim, kontrola povinnych parametrov a detekcia volitelnych a nepodporovanych
@@ -162,15 +173,27 @@ void* doSth(void *arg){
 	//odpojime thread, netreba nanho cakat v hlavnom threade
 	pthread_detach(pthread_self());
 	
+
+
+
+	threadVar vars;
+	vars = *((threadVar*)arg);
+
+
+
 	//lokalna premenna pre socket
 	int acceptSocket;
 	
 	//sucket castujeme anspat na int
-	acceptSocket = *((int *) arg);
+	acceptSocket = vars.socket;//*((int *) arg);
 	
+	cout << vars.username<< endl << vars.password << endl << vars.crypt << endl; 
+
 	//premenna pre buffer
 	char buff[BUFSIZE];
 	
+	string state = "authentication"; //string pre stav automatu
+
 	//smycka pre zikavanie dat
 	while (1)		
 	{		
@@ -265,6 +288,55 @@ void* doSth(void *arg){
 			}
 				*/
 
+  			//TODO zistit velkost emailov + poradie, ako? 
+
+
+  			switch(hashState(state)){
+  				case auth:
+  					switch (hashCommand(commandLow)){
+  						case user:
+  							cout << "amma madafaka user" << endl;
+  							break;
+  						case pass:
+  							break;
+  						case apop:
+  							break;
+  						case noop://nerob nic
+  							break;
+  						default:
+  							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+							break;
+  					}
+  					break;
+				case trans:
+					switch (hashCommand(commandLow)){
+  						case list:
+  							break;
+  						case stat:
+  							break;
+  						case retr:
+  							break;
+  						case dele:
+  							break;
+  						case rset:
+  							break;
+  						case uidl:
+  							break;
+  						case noop://nerob nic
+  							break;
+  						case quit:
+  							break;
+  						default:
+  							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+							break;
+
+  					}
+  					break;
+				case update://vymazat deleted
+					break;		
+				default:
+					break;
+  			}
 
 
 
@@ -285,6 +357,7 @@ void* doSth(void *arg){
             exit(EXIT_FAILURE);
         }
     }
+    close(acceptSocket);
     return (NULL);
 }
 
@@ -313,12 +386,70 @@ int main(int argc, char **argv){
     //kontrola parametrov
     args.parseArgs(argc,argv);
     //TODO kontrola zadanych ciest,suborov
-
-	
-
-
+    //TODO otestovat authfile+ nacitat
+    //TODO otestovat maildir+podpriecinky
 
 
+    threadVar tmp;//struktura pre premenne ktore je potrebne predat vlaknam
+    tmp.username = "";
+    tmp.password = "";
+
+
+
+
+    FILE *f;
+    f = fopen(args.authfile().c_str(),"r");
+    if(f == NULL){
+    	cerr << "Nespravny autentifikacny subor. " << endl;
+    	exit(1); 
+    }
+    int ch;
+    string tmpString="";
+    int counter;
+	while ((ch = fgetc(f))  != EOF){
+		counter++;
+		tmpString += ch;
+		cout<< tmpString << endl;
+		if(counter == 11){//ak sa nacital 11. znak(tj. nasical sme string "username = ")
+			if(tmpString == "username = "){//nacitali sme string username
+				while((ch = fgetc(f)) != '\n'){//do konca riadku nacitame prihlasovacie meno
+					tmp.username += ch;
+				}
+				cout<<tmp.username<<endl;
+				tmpString = "";
+			}
+			else{
+				cerr << "Invalidny autentifikacny subor" << endl;
+				exit(1);
+			}
+		}
+		else if(counter == 22){
+			if(tmpString == "password = "){
+				while((ch = fgetc(f)) != EOF){//do konca riadku nacitame prihlasovacie meno
+					tmp.password += ch;
+				}
+				tmpString = "";
+				break;
+
+			}
+			else{
+				cerr << "Invalidny autentifikacny subor" << endl;
+				exit(1);
+			}
+		}
+		else if(counter > 22){//okrem "username = " a "password = " je tam aj nieco ine
+			cerr << "Invalidny autentifikacny subor" << endl;
+			exit(1);
+		}
+		else{
+			continue;
+		}
+	}
+
+    fclose(f);
+
+
+ 
 
     //RESET
 	if(args.reset()){
@@ -326,11 +457,16 @@ int main(int argc, char **argv){
 	}
 
 	if(args.crypt()){
-		;
+		tmp.crypt = args.crypt();
 	}
     
 
 
+
+
+
+
+	//nastavenie pre posluchajuci socket
     int listenSocket,acceptSocket;
     struct sockaddr_in server;
     struct sockaddr_in client;
@@ -406,9 +542,6 @@ int main(int argc, char **argv){
 	FD_ZERO(&set);
 	FD_SET(listenSocket, &set);
 
-
-
-
 	//cyklus pre accept?? TODO 
 	while(1){
 
@@ -428,10 +561,14 @@ int main(int argc, char **argv){
 			cerr << "ERROR: fcntl" << endl;
 			close(acceptSocket);							
 		}
+
+		//pridanie socketu do struktury
+		tmp.socket = acceptSocket;
 		
 		//vytvorenie vlakna
 		pthread_t myThread;
-		if((pthread_create(&myThread, NULL, &doSth, &acceptSocket)) != 0){
+
+		if((pthread_create(&myThread, NULL, &doSth, &tmp)) != 0){
 			cerr << "Chyba pri vytvarani vlakna" << endl;
 			close(acceptSocket);
 		}
