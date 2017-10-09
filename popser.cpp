@@ -187,7 +187,8 @@ void* doSth(void *arg){
 
 	//vytvorenie uvitacej spravy
 	char name[100];
-	string welcomeMsg = "+OK POP3 server ready <" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + to_string(gethostname(name,100)) + ">\r\n";
+	gethostname(name,100);
+	string welcomeMsg = "+OK POP3 server ready <" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">\r\n";
 
 
 	//poslanie uvitacej spravy
@@ -198,14 +199,16 @@ void* doSth(void *arg){
 	unsigned char md5[MD5_DIGEST_LENGTH];
 	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
 	
-	char mdString[33];
+
+	//staci 32???
+	char mdString[32];
  
    	for(int i = 0; i < 16; i++)
 	sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
  	
  	string hash = mdString;
- 	cout << hash << endl; */
-    
+ 	cout << hash << endl;
+        */
 
 
 
