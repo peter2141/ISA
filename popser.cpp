@@ -173,21 +173,41 @@ void* doSth(void *arg){
 	//odpojime thread, netreba nanho cakat v hlavnom threade
 	pthread_detach(pthread_self());
 	
-
-
-
+	
 	threadVar vars;
 	vars = *((threadVar*)arg);
-
-
 
 	//lokalna premenna pre socket
 	int acceptSocket;
 	
-	//sucket castujeme anspat na int
+	//sucket castujeme naspat na int
 	acceptSocket = vars.socket;//*((int *) arg);
 	
 	cout << vars.username<< endl << vars.password << endl << vars.crypt << endl; 
+
+	//vytvorenie uvitacej spravy
+	char name[100];
+	string welcomeMsg = "+OK POP3 server ready <" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + to_string(gethostname(name,100)) + ">\r\n";
+
+
+	//poslanie uvitacej spravy
+	send(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()),0);
+
+	//vypocitanie hashu
+	/*string stringToHash = welcomeMsg + vars.password;
+	unsigned char md5[MD5_DIGEST_LENGTH];
+	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
+	
+	char mdString[33];
+ 
+   	for(int i = 0; i < 16; i++)
+	sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
+ 	
+ 	string hash = mdString;
+ 	cout << hash << endl; */
+    
+
+
 
 	//premenna pre buffer
 	char buff[BUFSIZE];
@@ -405,17 +425,15 @@ int main(int argc, char **argv){
     }
     int ch;
     string tmpString="";
-    int counter;
+    int counter = 0;
 	while ((ch = fgetc(f))  != EOF){
 		counter++;
 		tmpString += ch;
-		cout<< tmpString << endl;
 		if(counter == 11){//ak sa nacital 11. znak(tj. nasical sme string "username = ")
 			if(tmpString == "username = "){//nacitali sme string username
 				while((ch = fgetc(f)) != '\n'){//do konca riadku nacitame prihlasovacie meno
 					tmp.username += ch;
 				}
-				cout<<tmp.username<<endl;
 				tmpString = "";
 			}
 			else{
@@ -505,17 +523,6 @@ int main(int argc, char **argv){
 		perror("ERROR: fcntl");
 		exit(EXIT_FAILURE);								
 	}
-
-	
-
-
-
-	//experimenty pre pid, time, md5
-	cout << time(NULL) << endl;
-	cout << getpid() << endl;	
-	char name[100];
-	gethostname(name,100);//test on merlin, co ak neni domain name????
-	cout << name << endl;
 
 
 	//experiment md5 working on merlin
