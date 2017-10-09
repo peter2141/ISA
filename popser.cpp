@@ -18,6 +18,8 @@
 #include <csignal>
 #include <regex>
 #include <locale> 
+#include <mutex>
+#include <dirent.h>
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -26,6 +28,7 @@ using namespace std;
 
 //premenna pre zaznamenie signalu SIGINT
 static int volatile geci = 0;
+mutex mailMutex;
 
 //enum pre switch ktory indikuje stav
 enum states {
@@ -183,7 +186,7 @@ void* doSth(void *arg){
 	//sucket castujeme naspat na int
 	acceptSocket = vars.socket;//*((int *) arg);
 	
-	cout << vars.username<< endl << vars.password << endl << vars.crypt << endl; 
+	//cout << vars.username<< endl << vars.password << endl << vars.crypt << endl; 
 
 	//vytvorenie uvitacej spravy
 	char name[100];
@@ -195,7 +198,7 @@ void* doSth(void *arg){
 	send(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()),0);
 
 	//vypocitanie hashu
-	/*string stringToHash = welcomeMsg + vars.password;
+	string stringToHash = welcomeMsg + vars.password;
 	unsigned char md5[MD5_DIGEST_LENGTH];
 	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
 	
@@ -208,7 +211,7 @@ void* doSth(void *arg){
  	
  	string hash = mdString;
  	cout << hash << endl;
-        */
+        
 
 
 
@@ -217,11 +220,13 @@ void* doSth(void *arg){
 	
 	string state = "authentication"; //string pre stav automatu
 
+	bool userOK = false; //flag pre zistenie ci bol zadany spravny username
 	//smycka pre zikavanie dat
 	while (1)		
 	{		
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
-		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF		
+		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
+		int sen; //pre kontrolu send		
 		if (res > 0)
 		{
 			
@@ -229,7 +234,7 @@ void* doSth(void *arg){
 			string message = buff;
 			
 
-			//kontrola dlzky spravy
+			//kontrola dlzky spravy ????? aka max dlzka???
 			if(message.size()>255){
 				send(acceptSocket,"-ERR Too long command\r\n",strlen("-ERR Too long command\r\n"),0);
 				continue;
@@ -291,47 +296,99 @@ void* doSth(void *arg){
   				commandLow += tolower(command[i],loc);
   			}
 
-  			cout << command.size() << endl;
-  			cout << argument.size() << endl;
 
-  			cout << command  << endl;
-
-  			cout<< argument << endl;//co s CRLF????
-
-  			cout << commandLow << endl;
-
-  			
-
-
-			//kontrola ci ma prikaz spravny format
-			/*if(!regex_match(buff,regex("^[a-zA-Z]+ {1}.*\n"))){
-				//osetrit send
-				send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
-				continue;
-			}
-				*/
 
   			//TODO zistit velkost emailov + poradie, ako? 
+
+  			
 
 
   			switch(hashState(state)){
   				case auth:
   					switch (hashCommand(commandLow)){
-  						case user:
-  							cout << "amma madafaka user" << endl;
+  						
+
+
+
+  						case user://prisiel prikaz user
+							if(vars.crypt && userOK==false){//bol zadany parameter -c, USER after USER???????
+								if(vars.username.compare(argument) == 0){//spravny username
+									send(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"),0);
+									userOK = true;
+									break;
+								}
+								else{//zly username
+									send(acceptSocket,"-ERR Don't know this user\r\n",strlen("-ERR Don't know this user\r\n"),0);
+									break;
+								}
+							}
+							else{//nebola povolena autentifikacia USER - PASS
+								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+								break;
+							}
   							break;
   						case pass:
+  							if(userOK){
+  								if(vars.password.compare(argument) == 0){//dobre heslo
+  									send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
+  									if(!mailMutex.try_lock()){
+  										send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
+  										close(acceptSocket);//odpojime klienta, alebo neodpajat????
+  										return(NULL);
+  									}
+  									state = "transaction";
+  									//TODO move from new to cur
+  									break;
+  								}
+  								else{//zle heslo
+  									send(acceptSocket,"-ERR Wrong password\r\n",strlen("-ERR Wrong password\r\n"),0);
+  									break;
+  								}
+  							}//PASS mozno zadat iba pos spravnom USER
+  							else{
+  								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+								break;
+  							}
   							break;
   						case apop:
+  							//porovnat s hashom
+  							if(userOK){
+  								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+								break;
+  							}
+  							if(hash.compare(argument) == 0){
+  								send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
+								if(!mailMutex.try_lock()){
+									send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
+									close(acceptSocket);//odpojime klienta, alebo neodpajat????
+									return(NULL);
+								}
+								state = "transaction";
+								//TODO move from new to cur
+								break;
+  							}
+  							else{
+  								send(acceptSocket,"-ERR Wrong MD5 hash\r\n",strlen("-ERR Wrong MD5 hash\r\n"),0);
+  								break;
+  							}
   							break;
   						case noop://nerob nic
   							break;
+  						case quit://udpojime klienta
+  							close(acceptSocket);
+  							mailMutex.unlock();
+  							return(NULL);
   						default:
   							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
 							break;
   					}
   					break;
+
+
 				case trans:
+
+					cout << "madafakaa transaction" << endl;
+					//mailMutex.unlock();
 					switch (hashCommand(commandLow)){
   						case list:
   							break;
@@ -355,7 +412,11 @@ void* doSth(void *arg){
 
   					}
   					break;
+
+
+
 				case update://vymazat deleted
+					mailMutex.unlock();
 					break;		
 				default:
 					break;
@@ -366,8 +427,7 @@ void* doSth(void *arg){
 		}
         else if (res == 0) //ak sa klient odpoji -> odznacit subory na delete,odomknut zamok
         { 
-            printf("Client disconnected\n");
-			close(acceptSocket);						
+            printf("Client disconnected\n");						
 			break;
         }
         else if (errno == EAGAIN) // == EWOULDBLOCK
@@ -377,20 +437,13 @@ void* doSth(void *arg){
         else//ak chyba
         {
             perror("ERROR: recv");
-            exit(EXIT_FAILURE);
+            continue;
+            //exit(EXIT_FAILURE);
         }
     }
     close(acceptSocket);
     return (NULL);
 }
-
-/*void print_md5_sum(unsigned char* md) {
-    int i;
-    for(i=0; i <MD5_DIGEST_LENGTH; i++) {
-            printf("%02x",md[i]);
-    }
-}*/
-
 
 
 // SIGINT handler
@@ -408,8 +461,6 @@ int main(int argc, char **argv){
     Arguments args;
     //kontrola parametrov
     args.parseArgs(argc,argv);
-    //TODO kontrola zadanych ciest,suborov
-    //TODO otestovat authfile+ nacitat
     //TODO otestovat maildir+podpriecinky
 
 
@@ -419,7 +470,7 @@ int main(int argc, char **argv){
 
 
 
-
+    //nacitanie autentifikacneho suboru
     FILE *f;
     f = fopen(args.authfile().c_str(),"r");
     if(f == NULL){
@@ -470,6 +521,38 @@ int main(int argc, char **argv){
     fclose(f);
 
 
+    //kontrola maildiru a podpriecinkov
+    DIR* dir;
+    if((dir = opendir(args.maildir().c_str())) == NULL){
+    	cerr << "Chyba pri otvarani maildiru." << endl;
+    	exit(1);
+    }
+    closedir(dir);
+    
+    string tmpdir;//pre kontrolu cur,new,tmp
+    tmpdir = args.maildir() + "/cur";
+    if((dir = opendir(tmpdir.c_str())) == NULL){
+    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
+    	exit(1);
+    }
+    closedir(dir);
+
+    tmpdir = args.maildir() + "/tmp";
+    if((dir = opendir(tmpdir.c_str())) == NULL){
+    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
+    	exit(1);
+    }
+    closedir(dir);
+
+    tmpdir = args.maildir() + "/new";
+    if((dir = opendir(tmpdir.c_str())) == NULL){
+    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
+    	exit(1);
+    }
+    closedir(dir);
+
+
+
  
 
     //RESET
@@ -481,11 +564,6 @@ int main(int argc, char **argv){
 		tmp.crypt = args.crypt();
 	}
     
-
-
-
-
-
 
 	//nastavenie pre posluchajuci socket
     int listenSocket,acceptSocket;
@@ -557,19 +635,21 @@ int main(int argc, char **argv){
 
 		//select
 		if (select(listenSocket + 1, &set, NULL, NULL, NULL) == -1){
-			cerr << "Chyba pri select()." << endl;
+			continue;
 		}
 
 
 		if ((acceptSocket = accept(listenSocket, (struct sockaddr*)&client, &clientLen)) < 0){
 			cerr << "Chyba pri pripajani." << endl;
+			continue;
 		}
 
 		//nastavime socket ako nelbokujuci
 		int flags = fcntl(acceptSocket, F_GETFL, 0);
 		if ((fcntl(acceptSocket, F_SETFL, flags | O_NONBLOCK))<0){
 			cerr << "ERROR: fcntl" << endl;
-			close(acceptSocket);							
+			close(acceptSocket);	
+			continue;						
 		}
 
 		//pridanie socketu do struktury
