@@ -59,7 +59,7 @@ struct threadVar{
 	bool crypt;
 	string username;
 	string password;
-
+	string maildir;
 };
 
 
@@ -170,6 +170,20 @@ class Arguments{
 		
 };
 
+
+
+//velkost zadaneho suboru
+int fileSize(const char *file){
+	FILE *f=NULL;
+	f=fopen(file,"rb");
+	fseek(f,0,SEEK_END);
+	int size=ftell(f);
+	fclose(f);
+	return size;
+}
+
+
+
 //funkcia pre vlakna=klienty
 void* doSth(void *arg){
 	
@@ -198,7 +212,7 @@ void* doSth(void *arg){
 	send(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()),0);
 
 	//vypocitanie hashu
-	string stringToHash = welcomeMsg + vars.password;
+	/*string stringToHash = welcomeMsg + vars.password;
 	unsigned char md5[MD5_DIGEST_LENGTH];
 	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
 	
@@ -211,8 +225,8 @@ void* doSth(void *arg){
  	
  	string hash = mdString;
  	cout << hash << endl;
-        
-
+    */    
+	string hash = "";//tmp pre testovanie na ubuntu, pri 
 
 
 	//premenna pre buffer
@@ -373,8 +387,16 @@ void* doSth(void *arg){
   							}
   							break;
   						case noop://nerob nic
+  							if(argument.compare("")){//noop neberie argumenty
+  								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
+								break;
+  							}
   							break;
   						case quit://udpojime klienta
+  							if(argument.compare("")){//quit neberie argumenty
+  								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
+								break;
+  							}
   							close(acceptSocket);
   							mailMutex.unlock();
   							return(NULL);
@@ -391,31 +413,79 @@ void* doSth(void *arg){
 					//mailMutex.unlock();
 					switch (hashCommand(commandLow)){
   						case list:
+
   							break;
-  						case stat:
+
+  						case stat:{
+  							if(argument.compare("")){//stat neberie argumenty
+  								send(acceptSocket,"-ERR Stat does not take arguments\r\n",strlen("-ERR Stat does not take arguments\r\n"),0);
+								break;
+  							}
+  							// https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
+  							DIR *d = NULL;
+  							struct dirent *file;
+  							string tmpdir = vars.maildir + "/cur";
+  							int totalsize = 0;
+  							int count = 0;
+  							string tmpfilename;
+  							if((d = opendir(tmpdir.c_str())) != NULL){
+  								while((file = readdir(d)) != NULL){
+  									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+  										continue;
+  									}
+  									tmpfilename = tmpdir + "/"+ file->d_name;
+  									totalsize += fileSize(tmpfilename.c_str());
+  									count++;
+  								}
+  								closedir(d);
+  								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
+  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+								break;
+  							}
+  							else{//problem s cur priecinkom, ukoncime program
+  								cerr << "chyba pri otvarani priecinku cur" << endl;
+  								close(acceptSocket);
+  								mailMutex.unlock();
+  								exit(1);
+  							}	
   							break;
+  						}
   						case retr:
+
   							break;
   						case dele:
+
   							break;
   						case rset:
+  							if(argument.compare("")){//rset neberie argumenty
+  								send(acceptSocket,"-ERR Rset does not take arguments\r\n",strlen("-ERR Rset does not take arguments\r\n"),0);
+								break;
+  							}
   							break;
   						case uidl:
+
   							break;
   						case noop://nerob nic
+  							if(argument.compare("")){//noop neberie argumenty
+  								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
+								break;
+  							}
   							break;
   						case quit:
+  							if(argument.compare("")){//quit neberie argumenty
+  								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
+								break;
+  							}
+  							state = "update";
   							break;
   						default:
   							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
 							break;
-
   					}
   					break;
 
-
-
 				case update://vymazat deleted
+					close(acceptSocket);//odpojime klienta
 					mailMutex.unlock();
 					break;		
 				default:
@@ -427,7 +497,8 @@ void* doSth(void *arg){
 		}
         else if (res == 0) //ak sa klient odpoji -> odznacit subory na delete,odomknut zamok
         { 
-            printf("Client disconnected\n");						
+            printf("Client disconnected\n");
+            mailMutex.unlock();						
 			break;
         }
         else if (errno == EAGAIN) // == EWOULDBLOCK
@@ -436,7 +507,8 @@ void* doSth(void *arg){
         }
         else//ak chyba
         {
-            perror("ERROR: recv");
+        	mailMutex.unlock();	
+            cerr << "ERROR: recv" << endl;
             continue;
             //exit(EXIT_FAILURE);
         }
@@ -551,7 +623,7 @@ int main(int argc, char **argv){
     }
     closedir(dir);
 
-
+    tmp.maildir = args.maildir();
 
  
 
