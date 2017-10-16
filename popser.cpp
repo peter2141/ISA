@@ -20,6 +20,8 @@
 #include <locale> 
 #include <mutex>
 #include <dirent.h>
+#include <ctime>
+#include <fstream>
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -224,8 +226,10 @@ void* doSth(void *arg){
 	sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
  	
  	string hash = mdString;
+ 	hash = "vars.username + " " + hash; //pridanie username
  	cout << hash << endl;
     */    
+
 	string hash = "";//tmp pre testovanie na ubuntu, pri 
 
 
@@ -235,6 +239,10 @@ void* doSth(void *arg){
 	string state = "authentication"; //string pre stav automatu
 
 	bool userOK = false; //flag pre zistenie ci bol zadany spravny username
+
+	//------------------------------------------------------------------------------------------------------------------------------
+	//HLAVNA SMYCKA
+
 	//smycka pre zikavanie dat
 	while (1)		
 	{		
@@ -350,6 +358,70 @@ void* doSth(void *arg){
   										close(acceptSocket);//odpojime klienta, alebo neodpajat????
   										return(NULL);
   									}
+
+  									//kontrola ci existuje subor reset
+  									FILE *f;
+  									bool firstRun = true;//kontrola prveho spustenia
+
+  									if((f=fopen("reset.txt","w")) != NULL){
+  										ofstream resFile("reset.txt");
+  										resFile.close();
+  									}
+
+  									
+  									ofstream resetFile;
+  									if(firstRun){
+  										resetFile.open("reset.txt",std::ofstream::out);
+  									}
+  									
+  									//if((f=fopen("reset","w")) == NULL){
+  									//	ofstream tmpresetFile("reset");
+  									//	resetFile = tmpresetFile;
+  									//}
+  									
+									//resetFile.open ("reset.txt", );
+
+  									//presun z new do cur
+  									DIR *dir=NULL;
+									struct dirent *file;
+									string tmpdir = vars.maildir + "/new";
+									string tmpfilename1,tmpfilename2;
+									if((dir = opendir(tmpdir.c_str())) != NULL){
+										while((file = readdir(dir)) != NULL){
+											if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+												continue;
+											}
+											tmpfilename1 = tmpdir + "/"+ file->d_name;
+											tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
+											if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+												cerr << "chyba pri premenovani(prsune) z new do cur" << endl;
+												close(acceptSocket);
+			  									mailMutex.unlock();
+			  									//posunut vsetko naspat? 
+												exit(1);
+											}
+											if(firstRun){
+												resetFile << file->d_name << endl;
+											}
+											
+
+										}
+										closedir(dir);
+
+ 										
+									}
+						
+	
+									else{//problem s new priecinkom, ukoncime program
+										cerr << "chyba pri otvarani priecinku cur" << endl;
+										close(acceptSocket);
+			  							mailMutex.unlock();
+										exit(1);
+									}	//presun do dalsieho stavu
+									if(firstRun){
+										resetFile.close();	
+										firstRun = false;
+									}
   									state = "transaction";
   									//TODO move from new to cur
   									break;
@@ -368,6 +440,7 @@ void* doSth(void *arg){
   							//porovnat s hashom
   							if(userOK){
   								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+
 								break;
   							}
   							if(hash.compare(argument) == 0){
@@ -391,12 +464,14 @@ void* doSth(void *arg){
   								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
 								break;
   							}
+  							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
   						case quit://udpojime klienta
   							if(argument.compare("")){//quit neberie argumenty
   								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
 								break;
   							}
+  							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
   							close(acceptSocket);
   							mailMutex.unlock();
   							return(NULL);
@@ -407,7 +482,9 @@ void* doSth(void *arg){
   					break;
 
 
-				case trans:
+				case trans:{
+						
+						
 
 					cout << "madafakaa transaction" << endl;
 					//mailMutex.unlock();
@@ -450,6 +527,7 @@ void* doSth(void *arg){
   							}	
   							break;
   						}
+
   						case retr:
 
   							break;
@@ -470,12 +548,14 @@ void* doSth(void *arg){
   								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
 								break;
   							}
+  							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
   						case quit:
   							if(argument.compare("")){//quit neberie argumenty
   								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
 								break;
   							}
+  							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
   							state = "update";
   							break;
   						default:
@@ -483,9 +563,9 @@ void* doSth(void *arg){
 							break;
   					}
   					break;
-
+  				}
 				case update://vymazat deleted
-					close(acceptSocket);//odpojime klienta
+					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
 					mailMutex.unlock();
 					break;		
 				default:
@@ -636,6 +716,8 @@ int main(int argc, char **argv){
 		tmp.crypt = args.crypt();
 	}
     
+
+
 
 	//nastavenie pre posluchajuci socket
     int listenSocket,acceptSocket;
