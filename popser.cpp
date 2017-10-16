@@ -401,7 +401,7 @@ void* doSth(void *arg){
 												exit(1);
 											}
 											if(firstRun){
-												resetFile << file->d_name << endl;
+												resetFile << file->d_name << '\n';
 											}
 											
 
@@ -708,8 +708,30 @@ int main(int argc, char **argv){
  
 
     //RESET
-	if(args.reset()){
-		;//TODO -reset a pokracovanie
+
+	if(args.reset()){//osetrit este ak reset je spusteny po resete
+		ifstream resetIn;
+		resetIn.open("reset.txt", ios::in);
+		string filename;
+		while(!resetIn.eof()){//kym neni eof
+			getline(resetIn,filename);
+			//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+			if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
+				break;
+			}
+			string tmpfilename1 = tmp.maildir + "/cur/"+ filename;
+			string tmpfilename2 = tmp.maildir + "/new/" + filename;
+			int res = rename(tmpfilename1.c_str(), tmpfilename2.c_str());
+			//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+			if(res != 0){ // preco je chyba??
+				cout << res << endl;
+			
+				cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
+					//posunut vsetko naspat? 
+				exit(1);
+			}
+		}
+		//TODO -reset a pokracovanie
 	}
 
 	if(args.crypt()){
