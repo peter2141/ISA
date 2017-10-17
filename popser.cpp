@@ -150,8 +150,15 @@ class Arguments{
 					resetIn.close();
 					if(remove("reset.txt")!=0){
 						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
-
-
+					}
+					if(remove("info.txt")!=0){
+						cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
+					}
+					if(remove("tmpdel.txt")!=0){
+						cerr << "Chyba pri mazani pomocneho suboru" << endl;
+					}
+					if(remove("deleted.txt")!=0){
+						cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
 					}
 
 					//odstranit vsetko z cur
@@ -421,25 +428,22 @@ void* doSth(void *arg){
   									//kontrola ci existuje subor reset
   									FILE *f;
   									bool firstRun = true;//kontrola prveho spustenia
-
-  									if((f=fopen("reset.txt","w")) != NULL){
-  										ofstream resFile("reset.txt");
-  										resFile.close();
+  									if((f=fopen("reset.txt","r")) != NULL){
+  										firstRun = false;
   									}
 
   									
   									ofstream resetFile;
+  									ofstream infoFile;
+  									//vytvorime potrebne pomocne subory
   									if(firstRun){
   										resetFile.open("reset.txt",std::ofstream::out);
+  										ofstream infofile("info.txt");
+  										ofstream tmpdel("tmpdel.txt");
+  										ofstream deleted("deleted.txt");
   									}
   									
-  									//if((f=fopen("reset","w")) == NULL){
-  									//	ofstream tmpresetFile("reset");
-  									//	resetFile = tmpresetFile;
-  									//}
-  									
-									//resetFile.open ("reset.txt", );
-
+  									infoFile.open("info.txt", std::ofstream::app);
   									//presun z new do cur
   									DIR *dir=NULL;
 									struct dirent *file;
@@ -459,6 +463,10 @@ void* doSth(void *arg){
 			  									//posunut vsetko naspat? 
 												exit(1);
 											}
+											//pridanie nazvu a uidl do pomocneho suboru 
+											infoFile << file->d_name;
+											infoFile << "/";
+											infoFile << "UIDL" << endl;//TODO vytvroenie a ziskanie UIDL
 											if(firstRun){
 												resetFile << file->d_name << '\n';
 											}
@@ -467,8 +475,9 @@ void* doSth(void *arg){
 										}
 										closedir(dir);
 
- 										
+ 										infoFile.close();
 									}
+
 						
 	
 									else{//problem s new priecinkom, ukoncime program
@@ -479,10 +488,8 @@ void* doSth(void *arg){
 									}	//presun do dalsieho stavu
 									if(firstRun){
 										resetFile.close();	
-										firstRun = false;
 									}
   									state = "transaction";
-  									//TODO move from new to cur
   									break;
   								}
   								else{//zle heslo
@@ -543,8 +550,6 @@ void* doSth(void *arg){
 
 				case trans:{
 						
-						
-
 					cout << "madafakaa transaction" << endl;
 					//mailMutex.unlock();
 					switch (hashCommand(commandLow)){
@@ -590,9 +595,15 @@ void* doSth(void *arg){
   						case retr:
 
   							break;
-  						case dele:
+  						case dele:{
+  							 if(!argument.compare("")){//rset neberie argumenty
+  								send(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"),0);
+								break;
+  							}
+  							
 
   							break;
+  						}
   						case rset:
   							if(argument.compare("")){//rset neberie argumenty
   								send(acceptSocket,"-ERR Rset does not take arguments\r\n",strlen("-ERR Rset does not take arguments\r\n"),0);
@@ -673,8 +684,7 @@ int main(int argc, char **argv){
     //kontrola parametrov
     args.parseArgs(argc,argv);
     //TODO otestovat maildir+podpriecinky
-
-
+	
     threadVar tmp;//struktura pre premenne ktore je potrebne predat vlaknam
     tmp.username = "";
     tmp.password = "";
@@ -799,8 +809,15 @@ int main(int argc, char **argv){
 			resetIn.close();
 			if(remove("reset.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
-
-
+			}
+			if(remove("info.txt")!=0){
+				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
+			}
+			if(remove("tmpdel.txt")!=0){
+				cerr << "Chyba pri mazani pomocneho suboru" << endl;
+			}
+			if(remove("deleted.txt")!=0){
+				cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
 			}
 
 			//odstranit vsetko z cur
