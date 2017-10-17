@@ -21,7 +21,6 @@
 #include <mutex>
 #include <dirent.h>
 #include <ctime>
-#include <fstream>
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -116,7 +115,67 @@ class Arguments{
 			}
 			//hladanie parametru -r(rezim 2)
 			if(argc==2 && (string(argv[1])=="-r")){
-				cerr << "reset" << endl;//TODO reset
+				ifstream resetIn;
+				resetIn.open("reset.txt", ios::in);
+				//kontrola ci existuje subor (da sa otvorit??)
+				if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){
+					//subor existuje
+					char pwd[255];
+				
+					string filename;
+					while(!resetIn.eof()){//kym neni eof
+						getline(resetIn,filename);
+						//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+						if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
+							break;
+						}
+						//ude maildir v adresari kde binarka?
+						
+						if(getcwd(pwd,sizeof(pwd)) == NULL){
+							cerr << "Chyba pri ziskavani pwd" << endl;
+							exit(1);
+						}
+						string tmpfilename1 = string(pwd) + "/Maildir/cur/"+ filename;
+						string tmpfilename2 = string(pwd) + "/Maildir/new/" + filename;
+						int res = rename(tmpfilename1.c_str(), tmpfilename2.c_str());
+						//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+						if(res != 0){ // preco je chyba??
+							cout << res << endl;
+						
+							cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
+								//posunut vsetko naspat? 
+							exit(1);
+						}
+					}
+					resetIn.close();
+					if(remove("reset.txt")!=0){
+						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
+
+
+					}
+
+					//odstranit vsetko z cur
+					DIR * dir;
+					struct dirent *file;
+					string tmpdir = string(pwd) + "/Maildir/cur";
+					string tmpfilename;
+					if((dir = opendir(tmpdir.c_str())) != NULL){
+						while((file = readdir(dir)) != NULL){
+							if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+								continue;
+							}
+							tmpfilename = tmpdir + "/"+ file->d_name;
+							if(remove(tmpfilename.c_str())!=0){
+								cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
+							}
+						}
+						closedir(dir);
+					}
+					else{//problem s cur priecinkom, ukoncime program
+						cerr << "chyba pri otvarani priecinku cur" << endl;
+						exit(1);
+					}	
+				}
 				exit(0);
 			}
 			//klasicky rezim, kontrola povinnych parametrov a detekcia volitelnych a nepodporovanych
@@ -703,6 +762,7 @@ int main(int argc, char **argv){
     }
     closedir(dir);
 
+    //pridanie maildiru do struktury pre funkciu vlakna
     tmp.maildir = args.maildir();
 
  
@@ -712,26 +772,58 @@ int main(int argc, char **argv){
 	if(args.reset()){//osetrit este ak reset je spusteny po resete
 		ifstream resetIn;
 		resetIn.open("reset.txt", ios::in);
-		string filename;
-		while(!resetIn.eof()){//kym neni eof
-			getline(resetIn,filename);
-			//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
-			if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
-				break;
+		//kontrola ci existuje subor (da sa otvorit??)
+		if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){
+			//subor existuje
+
+		
+			string filename;
+			while(!resetIn.eof()){//kym neni eof
+				getline(resetIn,filename);
+				//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+				if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
+					break;
+				}
+				string tmpfilename1 = tmp.maildir + "/cur/"+ filename;
+				string tmpfilename2 = tmp.maildir + "/new/" + filename;
+				int res = rename(tmpfilename1.c_str(), tmpfilename2.c_str());
+				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+				if(res != 0){ // preco je chyba??
+					cout << res << endl;
+				
+					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
+						//posunut vsetko naspat? 
+					exit(1);
+				}
 			}
-			string tmpfilename1 = tmp.maildir + "/cur/"+ filename;
-			string tmpfilename2 = tmp.maildir + "/new/" + filename;
-			int res = rename(tmpfilename1.c_str(), tmpfilename2.c_str());
-			//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
-			if(res != 0){ // preco je chyba??
-				cout << res << endl;
-			
-				cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
-					//posunut vsetko naspat? 
+			resetIn.close();
+			if(remove("reset.txt")!=0){
+				cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
+
+
+			}
+
+			//odstranit vsetko z cur
+			struct dirent *file;
+			tmpdir = tmp.maildir + "/cur";
+			string tmpfilename;
+			if((dir = opendir(tmpdir.c_str())) != NULL){
+				while((file = readdir(dir)) != NULL){
+					if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+						continue;
+					}
+					tmpfilename = tmpdir + "/"+ file->d_name;
+					if(remove(tmpfilename.c_str())!=0){
+						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
+					}
+				}
+				closedir(dir);
+			}
+			else{//problem s cur priecinkom, ukoncime program
+				cerr << "chyba pri otvarani priecinku cur" << endl;
 				exit(1);
-			}
+			}	
 		}
-		//TODO -reset a pokracovanie
 	}
 
 	if(args.crypt()){
