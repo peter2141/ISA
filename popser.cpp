@@ -87,7 +87,12 @@ commands hashCommand(string command){
 	return notfound;
 }
 
-
+string absolutePath(const char *filename){
+	string path=realpath(filename,NULL);
+	//string ret = path;
+	//free(path);
+	return path;
+}
 
 //trieda pre spracovanie argumentov
 class Arguments{
@@ -116,55 +121,48 @@ class Arguments{
 			//hladanie parametru -r(rezim 2)
 			if(argc==2 && (string(argv[1])=="-r")){
 				ifstream resetIn;
+				ifstream deleteIn;
 				resetIn.open("reset.txt", ios::in);
 				//kontrola ci existuje subor (da sa otvorit??)
-				if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){
-					//subor existuje
-					char pwd[255];
-				
+				if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){//ak existuje subor tak este nebol pouzity reset
 					string filename;
 					while(!resetIn.eof()){//kym neni eof
 						getline(resetIn,filename);
 						//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
-						if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
+						if ((resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
 							break;
 						}
-						//ude maildir v adresari kde binarka?
-						
-						if(getcwd(pwd,sizeof(pwd)) == NULL){
-							cerr << "Chyba pri ziskavani pwd" << endl;
-							exit(1);
-						}
-						string tmpfilename1 = string(pwd) + "/Maildir/cur/"+ filename;
-						string tmpfilename2 = string(pwd) + "/Maildir/new/" + filename;
-						int res = rename(tmpfilename1.c_str(), tmpfilename2.c_str());
-						//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+						//prepis absolutnej cesty s /cur na /new
+						size_t pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
+						string tmpfilename2 = filename;
+						tmpfilename2.replace(pos,13,"/Maildir/new/");
+						//presun suborov z cur do new
+						int res = rename(filename.c_str(), tmpfilename2.c_str());
 						if(res != 0){ // preco je chyba??
-							cout << res << endl;
-						
 							cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
 								//posunut vsetko naspat? 
 							exit(1);
 						}
 					}
 					resetIn.close();
+
+					//odstranenie pomocnych suborov 
 					if(remove("reset.txt")!=0){
 						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
 					}
 					if(remove("info.txt")!=0){
 						cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 					}
-					if(remove("tmpdel.txt")!=0){
-						cerr << "Chyba pri mazani pomocneho suboru" << endl;
-					}
 					if(remove("deleted.txt")!=0){
 						cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
 					}
 
+
+
 					//odstranit vsetko z cur
-					DIR * dir;
+				/*	DIR * dir;
 					struct dirent *file;
-					string tmpdir = string(pwd) + "/Maildir/cur";
+					string tmpdir = pwd + "/Maildir/cur";
 					string tmpfilename;
 					if((dir = opendir(tmpdir.c_str())) != NULL){
 						while((file = readdir(dir)) != NULL){
@@ -181,8 +179,32 @@ class Arguments{
 					else{//problem s cur priecinkom, ukoncime program
 						cerr << "chyba pri otvarani priecinku cur" << endl;
 						exit(1);
-					}	
+					}*/	
 				}
+
+				deleteIn.open("delafterreset.txt", ios::in);
+				if ((deleteIn.rdstate() & std::ifstream::failbit ) == 0 ){ //este nebol pouzity reset
+					string filename;
+					while(!deleteIn.eof()){//kym neni eof
+						getline(deleteIn,filename);
+						//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+						if ((deleteIn.rdstate() & std::ifstream::eofbit ) != 0 ){
+							break;
+						}
+						//mazanie z cur
+						int res = remove(filename.c_str());
+						if(res != 0){ // preco je chyba??
+							cerr << "chyba pri mazani z cur" << endl;
+								//posunut vsetko naspat? 
+							exit(1);
+						}
+					}
+					deleteIn.close();
+					if(remove("delafterreset.txt")!=0){
+						cerr << "Chyba pri mazani pomocneho suboru na ukladanie suborov na mazanie po reseste" << endl;
+					}
+				}
+
 				exit(0);
 			}
 			//klasicky rezim, kontrola povinnych parametrov a detekcia volitelnych a nepodporovanych
@@ -435,15 +457,19 @@ void* doSth(void *arg){
   									
   									ofstream resetFile;
   									ofstream infoFile;
+  									ofstream delAfterRes;
   									//vytvorime potrebne pomocne subory
   									if(firstRun){
   										resetFile.open("reset.txt",std::ofstream::out);
-  										ofstream infofile("info.txt");
-  										ofstream tmpdel("tmpdel.txt");
+  										ofstream infoFile("info.txt");
   										ofstream deleted("deleted.txt");
+  										ofstream delafterreset("delafterreset.txt");//subory ktore maju byt vymazane po resete
   									}
-  									
+  									else{
+  										delAfterRes.open("delafterreset.txt", std::ofstream::app);
+  									}
   									infoFile.open("info.txt", std::ofstream::app);
+  									
   									//presun z new do cur
   									DIR *dir=NULL;
 									struct dirent *file;
@@ -463,32 +489,36 @@ void* doSth(void *arg){
 			  									//posunut vsetko naspat? 
 												exit(1);
 											}
-											//pridanie nazvu a uidl do pomocneho suboru 
-											infoFile << file->d_name;
+											//pridanie nazvu a uidl do pomocneho suboru  
+											infoFile <<file->d_name;
 											infoFile << "/";
 											infoFile << "UIDL" << endl;//TODO vytvroenie a ziskanie UIDL
-											if(firstRun){
-												resetFile << file->d_name << '\n';
+											if(firstRun){//pridanie nazvy suborov(s absolutnou cestou) do suboru s reset
+												resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
 											}
-											
+											else{
+												delAfterRes << absolutePath(tmpfilename2.c_str()) << '\n';
+											}
 
 										}
 										closedir(dir);
 
  										infoFile.close();
 									}
-
-						
-	
 									else{//problem s new priecinkom, ukoncime program
 										cerr << "chyba pri otvarani priecinku cur" << endl;
 										close(acceptSocket);
 			  							mailMutex.unlock();
 										exit(1);
 									}	//presun do dalsieho stavu
+									
 									if(firstRun){
 										resetFile.close();	
 									}
+									else{
+										delAfterRes.close();
+									}
+
   									state = "transaction";
   									break;
   								}
@@ -668,7 +698,42 @@ void* doSth(void *arg){
 }
 
 
-// SIGINT handler
+//kontrola spravneho formatu maildiru
+bool checkMaildir(Arguments args){
+	//kontrola maildiru a podpriecinkov
+    DIR* dir;
+    if((dir = opendir(args.maildir().c_str())) == NULL){
+    	cerr << "Chyba pri otvarani maildiru." << endl;
+    	return false;
+    }
+    closedir(dir);
+    
+    string tmpdir;//pre kontrolu cur,new,tmp
+    tmpdir = args.maildir() + "/cur";
+    if((dir = opendir(tmpdir.c_str())) == NULL){
+    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
+    	return false;
+    }
+    closedir(dir);
+
+    tmpdir = args.maildir() + "/tmp";
+    if((dir = opendir(tmpdir.c_str())) == NULL){
+    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
+    	return false;
+    }
+    closedir(dir);
+
+    tmpdir = args.maildir() + "/new";
+    if((dir = opendir(tmpdir.c_str())) == NULL){
+    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
+    	return false;
+    }
+    closedir(dir);
+    return true;
+}
+
+
+// SIGINT handler TODO
 void signalHandler(int x)
 {
 	
@@ -691,7 +756,7 @@ int main(int argc, char **argv){
 
 
 
-    //nacitanie autentifikacneho suboru
+    //nacitanie autentifikacneho suboru --TODO do funkcie
     FILE *f;
     f = fopen(args.authfile().c_str(),"r");
     if(f == NULL){
@@ -742,51 +807,22 @@ int main(int argc, char **argv){
     fclose(f);
 
 
-    //kontrola maildiru a podpriecinkov
-    DIR* dir;
-    if((dir = opendir(args.maildir().c_str())) == NULL){
-    	cerr << "Chyba pri otvarani maildiru." << endl;
-    	exit(1);
-    }
-    closedir(dir);
-    
-    string tmpdir;//pre kontrolu cur,new,tmp
-    tmpdir = args.maildir() + "/cur";
-    if((dir = opendir(tmpdir.c_str())) == NULL){
-    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
-    	exit(1);
-    }
-    closedir(dir);
-
-    tmpdir = args.maildir() + "/tmp";
-    if((dir = opendir(tmpdir.c_str())) == NULL){
-    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
-    	exit(1);
-    }
-    closedir(dir);
-
-    tmpdir = args.maildir() + "/new";
-    if((dir = opendir(tmpdir.c_str())) == NULL){
-    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
-    	exit(1);
-    }
-    closedir(dir);
+	
+	if(!checkMaildir(args)){
+		exit(1);//chyba pri overovani Maildiru
+	}
 
     //pridanie maildiru do struktury pre funkciu vlakna
     tmp.maildir = args.maildir();
 
- 
-
-    //RESET
+    //RESET ----- upravit premenovanie, mazanie je dobre
 
 	if(args.reset()){//osetrit este ak reset je spusteny po resete
 		ifstream resetIn;
 		resetIn.open("reset.txt", ios::in);
 		//kontrola ci existuje subor (da sa otvorit??)
 		if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){
-			//subor existuje
-
-		
+			//subor existuje		
 			string filename;
 			while(!resetIn.eof()){//kym neni eof
 				getline(resetIn,filename);
@@ -794,9 +830,12 @@ int main(int argc, char **argv){
 				if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
 					break;
 				}
-				string tmpfilename1 = tmp.maildir + "/cur/"+ filename;
-				string tmpfilename2 = tmp.maildir + "/new/" + filename;
-				int res = rename(tmpfilename1.c_str(), tmpfilename2.c_str());
+				size_t pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
+				string tmpfilename2 = filename;
+				tmpfilename2.replace(pos,13,"/Maildir/new/");
+				//string tmpfilename1 = tmp.maildir + "/cur/"+ filename;
+				//string tmpfilename2 = tmp.maildir + "/new/" + filename;
+				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
 				if(res != 0){ // preco je chyba??
 					cout << res << endl;
@@ -813,7 +852,7 @@ int main(int argc, char **argv){
 			if(remove("info.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
-			if(remove("tmpdel.txt")!=0){
+			if(remove("delafterreset.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru" << endl;
 			}
 			if(remove("deleted.txt")!=0){
@@ -821,8 +860,9 @@ int main(int argc, char **argv){
 			}
 
 			//odstranit vsetko z cur
+			DIR* dir;
 			struct dirent *file;
-			tmpdir = tmp.maildir + "/cur";
+			string tmpdir = tmp.maildir + "/cur";
 			string tmpfilename;
 			if((dir = opendir(tmpdir.c_str())) != NULL){
 				while((file = readdir(dir)) != NULL){
@@ -843,6 +883,7 @@ int main(int argc, char **argv){
 		}
 	}
 
+	//prepinac -c
 	if(args.crypt()){
 		tmp.crypt = args.crypt();
 	}
@@ -884,29 +925,12 @@ int main(int argc, char **argv){
 		exit(1);
 	}
 
+	//nastavime socket na neblokujuci
 	int flags = fcntl(listenSocket, F_GETFL, 0);
 	if ((fcntl(listenSocket, F_SETFL, flags | O_NONBLOCK))<0){
 		perror("ERROR: fcntl");
 		exit(EXIT_FAILURE);								
 	}
-
-
-	//experiment md5 working on merlin
-	//------------------------------------------------------
-	/*unsigned char md5[MD5_DIGEST_LENGTH];
-	string asd = "qwerty";
-	MD5((unsigned char *)asd.c_str(),asd.size(),md5);
-	
-	char mdString[33];
- 
-    	for(int i = 0; i < 16; i++)
-		sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
- 
-    	printf("md5 digest: %s\n", mdString);*/
-    //alebo funkcia ntohl
-
-    //------------------------------------------------------
-
 	
 
 
@@ -947,17 +971,13 @@ int main(int argc, char **argv){
 			cerr << "Chyba pri vytvarani vlakna" << endl;
 			close(acceptSocket);
 		}
-
-
 	}
 
 	//signal handler
 	signal(SIGINT, signalHandler);
 
-
 	//zatvorenie socketu
 	close(listenSocket);
 
     exit(0);
-  //  return 0;
 }
