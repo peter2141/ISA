@@ -21,6 +21,7 @@
 #include <mutex>
 #include <dirent.h>
 #include <ctime>
+#include <list>
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -44,7 +45,7 @@ enum commands{
 	pass,
 	apop,
 	stat,
-	list,
+	lst,
 	retr,
 	dele,
 	noop,
@@ -77,7 +78,7 @@ commands hashCommand(string command){
 	if (!command.compare("pass")) return pass;
 	if (!command.compare("apop")) return apop;
 	if (!command.compare("stat")) return stat;
-	if (!command.compare("list")) return list;
+	if (!command.compare("lst")) return lst;
 	if (!command.compare("retr")) return retr;
 	if (!command.compare("dele")) return dele;
 	if (!command.compare("noop")) return noop;
@@ -145,9 +146,11 @@ class Arguments{
 						//presun suborov z cur do new
 						int res = rename(filename.c_str(), tmpfilename2.c_str());
 						if(res != 0){ // preco je chyba??
-							cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
+							//TODO spinavy hack(ak sa nepodarilo presunut tak subor je zmazany)
+							continue;
+							/*cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
 								//posunut vsetko naspat? 
-							exit(1);
+							exit(1);*/
 						}
 					}
 					resetIn.close();
@@ -336,9 +339,12 @@ void* doSth(void *arg){
 
 	bool userOK = false; //flag pre zistenie ci bol zadany spravny username
 
+	//zoznam pre maily oznacene ako deleted v DELE, zmazanie v UPDATE
+  	list<char*> tmpdel_list;
+
+
 	//------------------------------------------------------------------------------------------------------------------------------
 	//HLAVNA SMYCKA
-
 	//smycka pre zikavanie dat
 	while (1)		
 	{		
@@ -415,10 +421,15 @@ void* doSth(void *arg){
   			}
 
 
+
+
   			//TODO zistit velkost emailov + poradie, ako? 
+
 
   			
   			switch(hashState(state)){
+
+
   				case auth:
   					switch (hashCommand(commandLow)){
   						
@@ -635,9 +646,11 @@ void* doSth(void *arg){
 				case trans:{
 						
 					cout << "madafakaa transaction" << endl;
-					//mailMutex.unlock();
+					//
+
+
 					switch (hashCommand(commandLow)){
-  						case list:
+  						case lst:
 
   							break;
 
@@ -677,15 +690,56 @@ void* doSth(void *arg){
   						}
 
   						case retr:
-  							
+
   							break;
   						case dele:{
-  							 if(!argument.compare("")){//rset neberie argumenty
+  							if(!argument.compare("")){//rset neberie argumenty
   								send(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"),0);
 								break;
   							}
-  							
+  							bool delOK = true;
+  							int msgnum = stoi(argument,nullptr,10);//TODO osetrit
+  							DIR *d = NULL;
+  							struct dirent *file;
+  							int count = 0;
+  							string tmpdir = vars.maildir + "/cur";
+  							if((d = opendir(tmpdir.c_str())) != NULL){
+  								while((file = readdir(d)) != NULL){
+  									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+  										continue;
+  									}
+  									count++;
+  									if(count==msgnum){
+  										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
+										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+										    if(!strcmp(file->d_name,*iterator)){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+												delOK = false;
+												break;
+										    }
+										}
+  										tmpdel_list.push_back(file->d_name);			
+  										break;
+  									}
+  								}
+  								if(msgnum > count || msgnum <= 0){
+  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+									break;
+  								}
+  								closedir(d);
+  								if(delOK){//posleme ok ak bol subor oznaceny ako mazany(kvoli tomu aby tato hlaska sa neposielala pri chybe)
+  									string tmpAnsw = "+OK msg deleted\r\n";
+  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+  								}
 
+								break;
+  							}
+  							else{//problem s cur priecinkom, ukoncime program
+  								cerr << "chyba pri otvarani priecinku cur" << endl;
+  								close(acceptSocket);
+  								mailMutex.unlock();
+  								exit(1);
+  							}	
   							break;
   						}
   						case rset:
@@ -693,6 +747,7 @@ void* doSth(void *arg){
   								send(acceptSocket,"-ERR Rset does not take arguments\r\n",strlen("-ERR Rset does not take arguments\r\n"),0);
 								break;
   							}
+
   							break;
   						case uidl:
 
@@ -704,7 +759,7 @@ void* doSth(void *arg){
   							}
   							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
-  						case quit:
+  						case quit: 
   							if(argument.compare("")){//quit neberie argumenty
   								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
 								break;
@@ -890,11 +945,14 @@ int main(int argc, char **argv){
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
 				if(res != 0){ // preco je chyba??
-					cout << res << endl;
-				
+					//TODO spinavy hack(ak sa nepodarilo presunut tak subor je zmazany)
+					continue;
+
+					//cout << res << endl;
+					/*			
 					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
 						//posunut vsetko naspat? 
-					exit(1);
+					exit(1);*/
 				}
 			}
 			resetIn.close();
