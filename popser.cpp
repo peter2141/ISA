@@ -348,6 +348,8 @@ void* doSth(void *arg){
 	//smycka pre zikavanie dat
 	while (1)		
 	{		
+
+		
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
 		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
 		int sen; //pre kontrolu send		
@@ -674,6 +676,7 @@ void* doSth(void *arg){
   									tmpfilename = tmpdir + "/"+ file->d_name;
   									totalsize += fileSize(tmpfilename.c_str());
   									count++;
+  									cout << file->d_name << endl;
   								}
   								closedir(d);
   								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
@@ -791,7 +794,8 @@ void* doSth(void *arg){
   								send(acceptSocket,"-ERR Rset does not take arguments\r\n",strlen("-ERR Rset does not take arguments\r\n"),0);
 								break;
   							}
-
+  							tmpdel_list.clear();
+  							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
   						case uidl:
 
@@ -815,12 +819,24 @@ void* doSth(void *arg){
   							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
 							break;
   					}
-  					break;
+  					if(state.compare("update")){
+  						break;
+  					}
+  					
   				}
-				case update://vymazat deleted
+				case update:{//vymazat deleted
+					string filename;
+					for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {//prejdeme vsetky oznacene subory
+						filename = vars.maildir + "/cur/" + *iterator;
+						if(remove(filename.c_str())!=0){//vymazeme subor
+							cerr << "Chyba pri mazani mailu" << endl;
+						}
+					}
 					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
 					mailMutex.unlock();
-					break;		
+					return(NULL);
+					break;	
+				}	
 				default:
 					break;
   			}
