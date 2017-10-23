@@ -689,11 +689,55 @@ void* doSth(void *arg){
   							break;
   						}
 
-  						case retr:
-
+  						case retr:{
+  							  if(!argument.compare("")){//retr ma povinny argument
+  								send(acceptSocket,"-ERR Stat does not take arguments\r\n",strlen("-ERR Stat does not take arguments\r\n"),0);
+								break;
+  							}
+  							DIR *d = NULL;
+  							int msgnum = stoi(argument,nullptr,10);//TODO osetrit
+  							struct dirent *file;
+  							string tmpdir = vars.maildir + "/cur";
+  							int filesize = 0;
+  							int count = 0;
+  							string tmpfilename;
+  							string msg;
+  							if((d = opendir(tmpdir.c_str())) != NULL){
+  								while((file = readdir(d)) != NULL){
+  									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+  										continue;
+  									}
+  									tmpfilename = tmpdir + "/"+ file->d_name;
+  							
+  									count++;
+  									if(count == msgnum){//nacitat spravu
+  										filesize = fileSize(tmpfilename.c_str());
+  										ifstream f(tmpfilename.c_str());
+										stringstream msgstream;
+										msgstream << f.rdbuf();
+										msg = msgstream.str();
+										break;
+  									}
+  								}
+  								if(msgnum > count || msgnum <= 0){//osetrenie cisla mailu
+  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+									break;
+  								}
+  								closedir(d);
+  								string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + "\r\n.\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
+  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+								break;
+  							}
+  							else{//problem s cur priecinkom, ukoncime program
+  								cerr << "chyba pri otvarani priecinku cur" << endl;
+  								close(acceptSocket);
+  								mailMutex.unlock();
+  								exit(1);
+  							}	
   							break;
+  						}
   						case dele:{
-  							if(!argument.compare("")){//rset neberie argumenty
+  							if(!argument.compare("")){//dele ma povinny argument
   								send(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"),0);
 								break;
   							}
