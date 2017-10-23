@@ -126,14 +126,20 @@ class Arguments{
 				//kontrola ci existuje subor (da sa otvorit??)
 				if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){//ak existuje subor tak este nebol pouzity reset
 					string filename;
+					string tmppath;
+					size_t pos;
 					while(!resetIn.eof()){//kym neni eof
 						getline(resetIn,filename);
+
 						//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
 						if ((resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
 							break;
 						}
+
+						tmppath = filename;
+
 						//prepis absolutnej cesty s /cur na /new
-						size_t pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
+						pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
 						string tmpfilename2 = filename;
 						tmpfilename2.replace(pos,13,"/Maildir/new/");
 						//presun suborov z cur do new
@@ -145,6 +151,9 @@ class Arguments{
 						}
 					}
 					resetIn.close();
+
+					tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur
+
 
 					//odstranenie pomocnych suborov 
 					if(remove("reset.txt")!=0){
@@ -159,10 +168,10 @@ class Arguments{
 
 
 
-					//odstranit vsetko z cur
-				/*	DIR * dir;
+					//odstranit vsetko ine z cur
+					DIR * dir;
 					struct dirent *file;
-					string tmpdir = pwd + "/Maildir/cur";
+					string tmpdir = tmppath + "/Maildir/cur";
 					string tmpfilename;
 					if((dir = opendir(tmpdir.c_str())) != NULL){
 						while((file = readdir(dir)) != NULL){
@@ -179,10 +188,10 @@ class Arguments{
 					else{//problem s cur priecinkom, ukoncime program
 						cerr << "chyba pri otvarani priecinku cur" << endl;
 						exit(1);
-					}*/	
+					}
 				}
 
-				deleteIn.open("delafterreset.txt", ios::in);
+				/*deleteIn.open("delafterreset.txt", ios::in);
 				if ((deleteIn.rdstate() & std::ifstream::failbit ) == 0 ){ //este nebol pouzity reset
 					string filename;
 					while(!deleteIn.eof()){//kym neni eof
@@ -203,7 +212,7 @@ class Arguments{
 					if(remove("delafterreset.txt")!=0){
 						cerr << "Chyba pri mazani pomocneho suboru na ukladanie suborov na mazanie po reseste" << endl;
 					}
-				}
+				}*/
 
 				exit(0);
 			}
@@ -290,7 +299,6 @@ void* doSth(void *arg){
 	//sucket castujeme naspat na int
 	acceptSocket = vars.socket;//*((int *) arg);
 	
-	//cout << vars.username<< endl << vars.password << endl << vars.crypt << endl; 
 
 	//vytvorenie uvitacej spravy
 	char name[100];
@@ -407,12 +415,9 @@ void* doSth(void *arg){
   			}
 
 
-
   			//TODO zistit velkost emailov + poradie, ako? 
 
   			
-
-
   			switch(hashState(state)){
   				case auth:
   					switch (hashCommand(commandLow)){
@@ -437,7 +442,7 @@ void* doSth(void *arg){
 								break;
 							}
   							break;
-  						case pass:
+  						case pass:{
   							if(userOK){
   								if(vars.password.compare(argument) == 0){//dobre heslo
   									send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
@@ -457,18 +462,15 @@ void* doSth(void *arg){
   									
   									ofstream resetFile;
   									ofstream infoFile;
-  									ofstream delAfterRes;
   									//vytvorime potrebne pomocne subory
   									if(firstRun){
-  										resetFile.open("reset.txt",std::ofstream::out);
+  										ofstream resfile("reset.txt");
   										ofstream infoFile("info.txt");
   										ofstream deleted("deleted.txt");
-  										ofstream delafterreset("delafterreset.txt");//subory ktore maju byt vymazane po resete
   									}
-  									else{
-  										delAfterRes.open("delafterreset.txt", std::ofstream::app);
-  									}
+
   									infoFile.open("info.txt", std::ofstream::app);
+  									resetFile.open("reset.txt",std::ofstream::app);
   									
   									//presun z new do cur
   									DIR *dir=NULL;
@@ -493,17 +495,13 @@ void* doSth(void *arg){
 											infoFile <<file->d_name;
 											infoFile << "/";
 											infoFile << "UIDL" << endl;//TODO vytvroenie a ziskanie UIDL
-											if(firstRun){//pridanie nazvy suborov(s absolutnou cestou) do suboru s reset
-												resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
-											}
-											else{
-												delAfterRes << absolutePath(tmpfilename2.c_str()) << '\n';
-											}
+											resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
 
 										}
 										closedir(dir);
 
  										infoFile.close();
+ 										resetFile.close();
 									}
 									else{//problem s new priecinkom, ukoncime program
 										cerr << "chyba pri otvarani priecinku cur" << endl;
@@ -512,12 +510,7 @@ void* doSth(void *arg){
 										exit(1);
 									}	//presun do dalsieho stavu
 									
-									if(firstRun){
-										resetFile.close();	
-									}
-									else{
-										delAfterRes.close();
-									}
+
 
   									state = "transaction";
   									break;
@@ -532,20 +525,80 @@ void* doSth(void *arg){
 								break;
   							}
   							break;
-  						case apop:
+  						}
+  						case apop:{
   							//porovnat s hashom
-  							if(userOK){
+  							if(userOK){//po user bol zadany apop  - to je chyba
   								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
-
 								break;
   							}
-  							if(hash.compare(argument) == 0){
+  							//pridanie username k hashu
+  							string apopstr = vars.username + " " + argument;
+  							if(hash.compare(apopstr) == 0){
   								send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
 								if(!mailMutex.try_lock()){
 									send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
 									close(acceptSocket);//odpojime klienta, alebo neodpajat????
 									return(NULL);
 								}
+								//kontrola ci existuje subor reset
+								FILE *f;
+								bool firstRun = true;//kontrola prveho spustenia
+								if((f=fopen("reset.txt","r")) != NULL){
+									firstRun = false;
+								}
+
+								
+								ofstream resetFile;
+								ofstream infoFile;
+								//vytvorime potrebne pomocne subory
+								if(firstRun){
+									ofstream resfile("reset.txt");
+									ofstream infoFile("info.txt");
+									ofstream deleted("deleted.txt");
+								}
+
+								infoFile.open("info.txt", std::ofstream::app);
+								resetFile.open("reset.txt",std::ofstream::app);
+								
+								//presun z new do cur
+								DIR *dir=NULL;
+								struct dirent *file;
+								string tmpdir = vars.maildir + "/new";
+								string tmpfilename1,tmpfilename2;
+								if((dir = opendir(tmpdir.c_str())) != NULL){
+									while((file = readdir(dir)) != NULL){
+										if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
+											continue;
+										}
+										tmpfilename1 = tmpdir + "/"+ file->d_name;
+										tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
+										if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+											cerr << "chyba pri premenovani(prsune) z new do cur" << endl;
+											close(acceptSocket);
+		  									mailMutex.unlock();
+		  									//posunut vsetko naspat? 
+											exit(1);
+										}
+										//pridanie nazvu a uidl do pomocneho suboru  
+										infoFile <<file->d_name;
+										infoFile << "/";
+										infoFile << "UIDL" << endl;//TODO vytvroenie a ziskanie UIDL
+										resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
+
+									}
+									closedir(dir);
+
+										infoFile.close();
+										resetFile.close();
+								}
+								else{//problem s new priecinkom, ukoncime program
+									cerr << "chyba pri otvarani priecinku cur" << endl;
+									close(acceptSocket);
+		  							mailMutex.unlock();
+									exit(1);
+								}	//presun do dalsieho stavu
+									
 								state = "transaction";
 								//TODO move from new to cur
 								break;
@@ -555,6 +608,7 @@ void* doSth(void *arg){
   								break;
   							}
   							break;
+  							}
   						case noop://nerob nic
   							if(argument.compare("")){//noop neberie argumenty
   								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
@@ -623,7 +677,7 @@ void* doSth(void *arg){
   						}
 
   						case retr:
-
+  							
   							break;
   						case dele:{
   							 if(!argument.compare("")){//rset neberie argumenty
@@ -833,8 +887,6 @@ int main(int argc, char **argv){
 				size_t pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
 				string tmpfilename2 = filename;
 				tmpfilename2.replace(pos,13,"/Maildir/new/");
-				//string tmpfilename1 = tmp.maildir + "/cur/"+ filename;
-				//string tmpfilename2 = tmp.maildir + "/new/" + filename;
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
 				if(res != 0){ // preco je chyba??
@@ -852,14 +904,11 @@ int main(int argc, char **argv){
 			if(remove("info.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
-			if(remove("delafterreset.txt")!=0){
-				cerr << "Chyba pri mazani pomocneho suboru" << endl;
-			}
 			if(remove("deleted.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
 			}
 
-			//odstranit vsetko z cur
+			//odstranit vsetko ostatne z cur
 			DIR* dir;
 			struct dirent *file;
 			string tmpdir = tmp.maildir + "/cur";
@@ -939,7 +988,6 @@ int main(int argc, char **argv){
 	FD_ZERO(&set);
 	FD_SET(listenSocket, &set);
 
-	//cyklus pre accept?? TODO 
 	while(1){
 
 		//select
