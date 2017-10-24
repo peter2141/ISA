@@ -284,7 +284,9 @@ int fileSize(const char *file){
 	return size;
 }
 
-
+int getVirtualSize(string filename){
+	return 0;
+}
 
 //funkcia pre vlakna=klienty
 void* doSth(void *arg){
@@ -342,6 +344,7 @@ void* doSth(void *arg){
 	//zoznam pre maily oznacene ako deleted v DELE, zmazanie v UPDATE
   	list<char*> tmpdel_list;
 
+  	string username;//pre kontrolu username v pass
 
 	//------------------------------------------------------------------------------------------------------------------------------
 	//HLAVNA SMYCKA
@@ -423,7 +426,7 @@ void* doSth(void *arg){
   			}
 
 
-
+  			
 
   			//TODO zistit velkost emailov + poradie, ako? 
 
@@ -436,19 +439,21 @@ void* doSth(void *arg){
   					switch (hashCommand(commandLow)){
   						
 
-
+  						
 
   						case user://prisiel prikaz user
-							if(vars.crypt && userOK==false){//bol zadany parameter -c, USER after USER???????
-								if(vars.username.compare(argument) == 0){//spravny username
+							if(vars.crypt){//bol zadany parameter -c, USER after USER moze byt
+								//if(vars.username.compare(argument) == 0){//spravny username
+									//user sa kontroluje az pri pass
 									send(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"),0);
+									username = argument;
 									userOK = true;
 									break;
-								}
-								else{//zly username
-									send(acceptSocket,"-ERR Don't know this user\r\n",strlen("-ERR Don't know this user\r\n"),0);
-									break;
-								}
+								//}
+								//else{//zly username
+								//	send(acceptSocket,"-ERR Don't know this user\r\n",strlen("-ERR Don't know this user\r\n"),0);
+								//	break;
+								//}
 							}
 							else{//nebola povolena autentifikacia USER - PASS
 								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
@@ -457,7 +462,7 @@ void* doSth(void *arg){
   							break;
   						case pass:{
   							if(userOK){
-  								if(vars.password.compare(argument) == 0){//dobre heslo
+  								if(vars.password.compare(argument) == 0 && vars.username.compare(username) == 0){//dobre heslo a meno
   									send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
   									if(!mailMutex.try_lock()){
   										send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
@@ -529,7 +534,8 @@ void* doSth(void *arg){
   									break;
   								}
   								else{//zle heslo
-  									send(acceptSocket,"-ERR Wrong password\r\n",strlen("-ERR Wrong password\r\n"),0);
+  									send(acceptSocket,"-ERR Wrong username or password\r\n",strlen("-ERR Wrong username or password\r\n"),0);
+  									userOK = false;
   									break;
   								}
   							}//PASS mozno zadat iba pos spravnom USER
@@ -657,10 +663,6 @@ void* doSth(void *arg){
   							break;
 
   						case stat:{
-  							if(argument.compare("")){//stat neberie argumenty
-  								send(acceptSocket,"-ERR Stat does not take arguments\r\n",strlen("-ERR Stat does not take arguments\r\n"),0);
-								break;
-  							}
   							// https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
   							DIR *d = NULL;
   							struct dirent *file;
@@ -693,12 +695,12 @@ void* doSth(void *arg){
   						}
 
   						case retr:{
-  							  if(!argument.compare("")){//retr ma povinny argument
-  								send(acceptSocket,"-ERR Stat does not take arguments\r\n",strlen("-ERR Stat does not take arguments\r\n"),0);
+  							if(!argument.compare("")){//retr ma povinny argument
+  								send(acceptSocket,"-ERR Retr need message number\r\n",strlen("-ERR Retr need message number\r\n"),0);
 								break;
   							}
   							DIR *d = NULL;
-  							int msgnum = stoi(argument,nullptr,10);//TODO osetrit
+  							int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
   							struct dirent *file;
   							string tmpdir = vars.maildir + "/cur";
   							int filesize = 0;
@@ -790,10 +792,6 @@ void* doSth(void *arg){
   							break;
   						}
   						case rset:
-  							if(argument.compare("")){//rset neberie argumenty
-  								send(acceptSocket,"-ERR Rset does not take arguments\r\n",strlen("-ERR Rset does not take arguments\r\n"),0);
-								break;
-  							}
   							tmpdel_list.clear();
   							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
@@ -801,17 +799,9 @@ void* doSth(void *arg){
 
   							break;
   						case noop://nerob nic
-  							if(argument.compare("")){//noop neberie argumenty
-  								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
-								break;
-  							}
   							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
   						case quit: 
-  							if(argument.compare("")){//quit neberie argumenty
-  								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
-								break;
-  							}
   							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
   							state = "update";
   							break;
