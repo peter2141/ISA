@@ -688,13 +688,13 @@ void* doSth(void *arg){
   						case stat:{
   							// https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
   							DIR *d = NULL;
-  							struct dirent *file;
+  							//struct dirent *file;
   							string tmpdir = vars.maildir + "/cur";
   							int totalsize = 0;
   							int count = 0;
   							string tmpfilename;
   							if((d = opendir(tmpdir.c_str())) != NULL){
-  								while((file = readdir(d)) != NULL){
+  								/*while((file = readdir(d)) != NULL){
   									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
   										continue;
   									}
@@ -706,8 +706,67 @@ void* doSth(void *arg){
   								closedir(d);
   								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
   								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+								break;*/
+  							
+  								//
+  								int tmpsize;
+  								char filename[256];
+  								string line;
+  								ifstream file;
+  								file.open("info.txt");
+  								bool wasdeleted = false;
+  								//ziskame velkosti suborov
+  								while(!file.eof()){//kym neni eof
+									getline(file,line);
+
+									//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+									if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+										break;
+									}
+
+									//rozparsujeme riadok z info suboru, ziskame nazov a velkost jednotlivych suborov
+									sscanf(line.c_str(),"%[^/]/%*[^/]/%d",filename,&tmpsize);
+
+
+									//kontrola ci subor je oznaceny ako mazany
+									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+									    if(!strcmp(filename,*iterator)){//ak mail bol uz oznaceny na mazanie
+									    	wasdeleted = true;
+									    	break;
+									    }
+									}
+									//kontorla ci subor uz nebol zmazany nahodou
+									ifstream delfile;
+									delfile.open("deleted.txt");
+									while(!delfile.eof()){
+										getline(delfile,line);
+										if ((delfile.rdstate() & std::ifstream::eofbit ) != 0 ){
+											break;
+										}
+										if(!strcmp(line.c_str(),filename)){//subor uz bol zmazany
+											wasdeleted = true;
+											break;
+										}
+									}
+
+									//ak bol oznaceny na mazanie alebo zmazany tak sa nepripocita jeho velkost a nepripocitava sa ani do poctu mailov
+									if(wasdeleted){
+										wasdeleted = false;
+										continue;
+									}
+									else{
+										count++;
+										totalsize += tmpsize;
+									}
+									
+								}
+								file.close();
+								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
+  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
 								break;
+
   							}
+
   							else{//problem s cur priecinkom, ukoncime program
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
@@ -729,8 +788,11 @@ void* doSth(void *arg){
   							int filesize = 0;
   							int count = 0;
   							string tmpfilename;
-  							string msg;
+  							string msg = "";
+  							string tmpline;
+  							bool retrOK = true;
   							if((d = opendir(tmpdir.c_str())) != NULL){
+  								//prejdeme vsetky subory v current
   								while((file = readdir(d)) != NULL){
   									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
   										continue;
@@ -739,22 +801,48 @@ void* doSth(void *arg){
   							
   									count++;
   									if(count == msgnum){//nacitat spravu
-  										filesize = fileSize(tmpfilename.c_str());
+  										//kontrola ci sprava bola mazana
+										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+										    if(!strcmp(file->d_name,*iterator)){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+										    	retrOK = false;//flag pre oznacenie chyby 
+												break;
+										    }
+										}
+
+  										filesize = getVirtualSize(tmpfilename.c_str());
   										ifstream f(tmpfilename.c_str());
-										stringstream msgstream;
-										msgstream << f.rdbuf();
-										msg = msgstream.str();
+										//nacitanie emailu
+										while(!f.eof()){
+											getline(f,tmpline);
+											if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
+												break;
+											}
+											//cout << tmpline << endl;
+											//appendovanie do msg
+											msg.append(tmpline);
+											msg += "\r\n";
+										}
+										f.close();
 										break;
   									}
   								}
+
+  								closedir(d);
+
   								if(msgnum > count || msgnum <= 0){//osetrenie cisla mailu
   									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
 									break;
   								}
-  								closedir(d);
-  								string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + "\r\n.\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
-  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
-								break;
+
+  								
+
+  								if(retrOK){//ak vsetko prebehlo v poriadku
+  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + "\r\n.\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
+		  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+										break;
+  								}
+
   							}
   							else{//problem s cur priecinkom, ukoncime program
   								cerr << "chyba pri otvarani priecinku cur" << endl;
@@ -839,12 +927,17 @@ void* doSth(void *arg){
   				}
 				case update:{//vymazat deleted
 					string filename;
+					ofstream deleted;
+					deleted.open("deleted.txt", std::ofstream::app);
 					for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {//prejdeme vsetky oznacene subory
+						//pridame nazov suboru do suboru s mazanymi mailmi
+						deleted << *iterator << endl;
 						filename = vars.maildir + "/cur/" + *iterator;
 						if(remove(filename.c_str())!=0){//vymazeme subor
 							cerr << "Chyba pri mazani mailu" << endl;
 						}
 					}
+					deleted.close();
 					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
 					mailMutex.unlock();
 					return(NULL);
