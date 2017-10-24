@@ -284,8 +284,28 @@ int fileSize(const char *file){
 	return size;
 }
 
+//funckia pre zistenie virtualnej velkosti suboru
 int getVirtualSize(string filename){
-	return 0;
+	int size = fileSize(filename.c_str());//zieskame velkost
+	int linenumber = 0;
+	string line;
+	ifstream file;
+	file.open(filename.c_str());//otvorime subor
+	while(!file.eof()){//kym neni eof
+		getline(file,line);
+
+		//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+		if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+			break;
+		}
+		//pozrieme ci je tam \r
+		if(line[line.length()-1] != '\r'){
+			linenumber++;
+		}
+	}
+	file.close();
+	size += linenumber;
+	return size;
 }
 
 //funkcia pre vlakna=klienty
@@ -512,7 +532,10 @@ void* doSth(void *arg){
 											//pridanie nazvu a uidl do pomocneho suboru  
 											infoFile <<file->d_name;
 											infoFile << "/";
-											infoFile << "UIDL" << endl;//TODO vytvroenie a ziskanie UIDL
+											infoFile << "UIDL/";//TODO vytvroenie a ziskanie UIDL
+											//pridame aj velkost suboru(virtualnu tj. s CRLF)
+											infoFile << getVirtualSize(tmpfilename2)<<endl;
+											//pridanie absolutnej cesty do suboru potrebneho k resetu
 											resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
 
 										}
