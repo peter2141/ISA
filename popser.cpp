@@ -7,6 +7,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <ctype.h>
@@ -22,6 +23,7 @@
 #include <dirent.h>
 #include <ctime>
 #include <list>
+#include <vector>
 
 #define BUFSIZE  1024
 #define QUEUE	2
@@ -44,7 +46,7 @@ enum commands{
 	user,
 	pass,
 	apop,
-	stat,
+	staat,
 	lst,
 	retr,
 	dele,
@@ -77,7 +79,7 @@ commands hashCommand(string command){
 	if (!command.compare("user")) return user;
 	if (!command.compare("pass")) return pass;
 	if (!command.compare("apop")) return apop;
-	if (!command.compare("stat")) return stat;
+	if (!command.compare("stat")) return staat;
 	if (!command.compare("lst")) return lst;
 	if (!command.compare("retr")) return retr;
 	if (!command.compare("dele")) return dele;
@@ -152,10 +154,11 @@ class Arguments{
 								//posunut vsetko naspat? 
 							exit(1);*/
 						}
+						tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur
 					}
-					resetIn.close();
+					
 
-					tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur
+					
 
 
 					//odstranenie pomocnych suborov 
@@ -174,7 +177,7 @@ class Arguments{
 					//odstranit vsetko ine z cur
 					DIR * dir;
 					struct dirent *file;
-					string tmpdir = tmppath + "/Maildir/cur";
+					string tmpdir = tmppath + "/Maildir/cur";//ak reset prazdny? nemoze byt prazdny!!!
 					string tmpfilename;
 					if((dir = opendir(tmpdir.c_str())) != NULL){
 						while((file = readdir(dir)) != NULL){
@@ -194,6 +197,7 @@ class Arguments{
 					}
 				}
 
+				resetIn.close();
 				/*deleteIn.open("delafterreset.txt", ios::in);
 				if ((deleteIn.rdstate() & std::ifstream::failbit ) == 0 ){ //este nebol pouzity reset
 					string filename;
@@ -308,6 +312,47 @@ int getVirtualSize(string filename){
 	return size;
 }
 
+void getFilesInCur(vector<string>& files,string maildir){
+	DIR *tmpdir=NULL;
+	struct dirent *tmpfile;
+	string curdir = maildir + "/cur";
+	tmpdir = opendir(curdir.c_str());
+	while((tmpfile = readdir(tmpdir)) != NULL){
+			if(!strcmp(tmpfile->d_name,".") || !strcmp(tmpfile->d_name,"..") ){
+				continue;
+			}
+			else{
+				//pridame nazov suboru do vectoru mien
+				files.push_back(string(tmpfile->d_name));
+			}
+
+			
+	}
+	closedir(tmpdir);
+}
+
+/*char* getFilesInCur2(string maildir){
+	char files[50][100];
+	int i = 0;
+	DIR *tmpdir=NULL;
+	struct dirent *tmpfile;
+	string curdir = maildir + "/cur";
+	tmpdir = opendir(curdir.c_str());
+	while((tmpfile = readdir(tmpdir)) != NULL){
+			if(!strcmp(tmpfile->d_name,".") || !strcmp(tmpfile->d_name,"..") ){
+				continue;
+			}
+			//pridame nazov suboru do vectoru mien
+			//files.push_back(tmpfile->d_name);
+			strcpy(files[i],tmpfile->d_name);
+			i++;
+	}
+	closedir(tmpdir);
+	return *files;
+}*/
+
+
+
 //funkcia pre vlakna=klienty
 void* doSth(void *arg){
 	
@@ -363,9 +408,14 @@ void* doSth(void *arg){
 
 	//zoznam pre maily oznacene ako deleted v DELE, zmazanie v UPDATE
   	list<char*> tmpdel_list;
+  	//vector pre subory v current - kvoli cislovanie mailov   	pridanie suborov v cur do vectoru,osetrit ci sa da otvorit cur??
+  	vector<string> geciszopokurva;
+  	getFilesInCur(geciszopokurva,vars.maildir);
+  	//geciszopokurva[0] = "picsa";
+  //	cout << geciszopokurva[0] << endl;
 
   	string username;//pre kontrolu username v pass
-
+ 
 	//------------------------------------------------------------------------------------------------------------------------------
 	//HLAVNA SMYCKA
 	//smycka pre zikavanie dat
@@ -446,8 +496,6 @@ void* doSth(void *arg){
   			}
 
 
-  			
-
   			//TODO zistit velkost emailov + poradie, ako? 
 
 
@@ -455,7 +503,7 @@ void* doSth(void *arg){
   			switch(hashState(state)){
 
 
-  				case auth:
+  				case auth:{
   					switch (hashCommand(commandLow)){
   						
 
@@ -483,6 +531,7 @@ void* doSth(void *arg){
   						case pass:{
   							if(userOK){
   								if(vars.password.compare(argument) == 0 && vars.username.compare(username) == 0){//dobre heslo a meno
+  									//cout << geciszopokurva[0]<<endl;
   									send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
   									if(!mailMutex.try_lock()){
   										send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
@@ -490,31 +539,38 @@ void* doSth(void *arg){
   										return(NULL);
   									}
 
-  									//kontrola ci existuje subor reset
-  									FILE *f;
   									bool firstRun = true;//kontrola prveho spustenia
-  									if((f=fopen("reset.txt","r")) != NULL){
+
+
+  									struct stat buffer;   
+  									if(stat("reset.txt", &buffer) == 0){
   										firstRun = false;
   									}
-
-  									
-  									ofstream resetFile;
-  									ofstream infoFile;
+  									//cout << geciszopokurva[0] << endl;
+  									//char* asd = geciszopokurva[0];
+  									//cout << asd << endl;
+  									//cout << geciszopokurva[0] << endl;
   									//vytvorime potrebne pomocne subory
   									if(firstRun){
   										ofstream resfile("reset.txt");
   										ofstream infoFile("info.txt");
   										ofstream deleted("deleted.txt");
   									}
+  									ofstream resetFile;
+  									ofstream infoFile;
 
   									infoFile.open("info.txt", std::ofstream::app);
   									resetFile.open("reset.txt",std::ofstream::app);
-  									
+  									//geciszopokurva.push_back("sda");
+
   									//presun z new do cur
   									DIR *dir=NULL;
 									struct dirent *file;
 									string tmpdir = vars.maildir + "/new";
-									string tmpfilename1,tmpfilename2;
+									string tmpfilename1,tmpfilename2;	
+
+									//cout << geciszopokurva[0] << endl;
+									//cout << geciszopokurva.size() << endl;
 									if((dir = opendir(tmpdir.c_str())) != NULL){
 										while((file = readdir(dir)) != NULL){
 											if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
@@ -529,6 +585,9 @@ void* doSth(void *arg){
 			  									//posunut vsetko naspat? 
 												exit(1);
 											}
+
+											//pridame nazov suboru do vectoru mien
+											geciszopokurva.push_back(string(file->d_name));
 											//pridanie nazvu a uidl do pomocneho suboru  
 											infoFile <<file->d_name;
 											infoFile << "/";
@@ -538,12 +597,13 @@ void* doSth(void *arg){
 											//pridanie absolutnej cesty do suboru potrebneho k resetu
 											resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
 
+
 										}
 										closedir(dir);
 
- 										infoFile.close();
- 										resetFile.close();
+ 										
 									}
+
 									else{//problem s new priecinkom, ukoncime program
 										cerr << "chyba pri otvarani priecinku cur" << endl;
 										close(acceptSocket);
@@ -551,11 +611,19 @@ void* doSth(void *arg){
 										exit(1);
 									}	//presun do dalsieho stavu
 									
-
-
+									infoFile.close();
+ 									resetFile.close();
+									
+ 									//geciszopokurva = geciszopokurva1;
+ 									//cout << geciszopokurva[0] << endl;
+ 									//cout << geciszopokurva[0] << endl;
+ 									//cout << geciszopokurva[1] << endl;
+ 									//cout << geciszopokurva[2] << endl;
+ 									//cout << geciszopokurva1[0] << endl;
   									state = "transaction";
   									break;
   								}
+
   								else{//zle heslo
   									send(acceptSocket,"-ERR Wrong username or password\r\n",strlen("-ERR Wrong username or password\r\n"),0);
   									userOK = false;
@@ -566,6 +634,7 @@ void* doSth(void *arg){
   								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
 								break;
   							}
+
   							break;
   						}
   						case apop:{
@@ -608,6 +677,9 @@ void* doSth(void *arg){
 								struct dirent *file;
 								string tmpdir = vars.maildir + "/new";
 								string tmpfilename1,tmpfilename2;
+
+								
+
 								if((dir = opendir(tmpdir.c_str())) != NULL){
 									while((file = readdir(dir)) != NULL){
 										if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
@@ -622,6 +694,8 @@ void* doSth(void *arg){
 		  									//posunut vsetko naspat? 
 											exit(1);
 										}
+										//pridame nazov suboru do vectoru mien
+										geciszopokurva.push_back(file->d_name);
 										//pridanie nazvu a uidl do pomocneho suboru  
 										infoFile <<file->d_name;
 										infoFile << "/";
@@ -629,10 +703,11 @@ void* doSth(void *arg){
 										resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
 
 									}
+
 									closedir(dir);
 
-										infoFile.close();
-										resetFile.close();
+									infoFile.close();
+									resetFile.close();
 								}
 								else{//problem s new priecinkom, ukoncime program
 									cerr << "chyba pri otvarani priecinku cur" << endl;
@@ -673,19 +748,15 @@ void* doSth(void *arg){
   					}
   					break;
 
-
+  				}
 				case trans:{
-						
-					cout << "madafakaa transaction" << endl;
-					//
-
 
 					switch (hashCommand(commandLow)){
   						case lst:
 
   							break;
 
-  						case stat:{
+  						case staat:{
   							// https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
   							DIR *d = NULL;
   							//struct dirent *file;
@@ -694,21 +765,6 @@ void* doSth(void *arg){
   							int count = 0;
   							string tmpfilename;
   							if((d = opendir(tmpdir.c_str())) != NULL){
-  								/*while((file = readdir(d)) != NULL){
-  									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
-  										continue;
-  									}
-  									tmpfilename = tmpdir + "/"+ file->d_name;
-  									totalsize += fileSize(tmpfilename.c_str());
-  									count++;
-  									cout << file->d_name << endl;
-  								}
-  								closedir(d);
-  								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
-  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
-								break;*/
-  							
-  								//
   								int tmpsize;
   								char filename[256];
   								string line;
@@ -730,6 +786,7 @@ void* doSth(void *arg){
 
 									//kontrola ci subor je oznaceny ako mazany
 									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+									    cout << *iterator << endl;
 									    if(!strcmp(filename,*iterator)){//ak mail bol uz oznaceny na mazanie
 									    	wasdeleted = true;
 									    	break;
@@ -748,7 +805,7 @@ void* doSth(void *arg){
 											break;
 										}
 									}
-
+									delfile.close();
 									//ak bol oznaceny na mazanie alebo zmazany tak sa nepripocita jeho velkost a nepripocitava sa ani do poctu mailov
 									if(wasdeleted){
 										wasdeleted = false;
@@ -761,6 +818,7 @@ void* doSth(void *arg){
 									
 								}
 								file.close();
+								closedir(d);
 								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
   								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
 								break;
@@ -783,65 +841,54 @@ void* doSth(void *arg){
   							}
   							DIR *d = NULL;
   							int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
-  							struct dirent *file;
+  							msgnum -= 1;//kvoli indexovaniu vo vectore 
   							string tmpdir = vars.maildir + "/cur";
   							int filesize = 0;
-  							int count = 0;
   							string tmpfilename;
   							string msg = "";
   							string tmpline;
   							bool retrOK = true;
   							if((d = opendir(tmpdir.c_str())) != NULL){
-  								//prejdeme vsetky subory v current
-  								while((file = readdir(d)) != NULL){
-  									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
-  										continue;
-  									}
-  									tmpfilename = tmpdir + "/"+ file->d_name;
-  							
-  									count++;
-  									if(count == msgnum){//nacitat spravu
-  										//kontrola ci sprava bola mazana
-										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-										    if(!strcmp(file->d_name,*iterator)){//ak vybrany mail bol uz oznaceny na mazanie chyba
-										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
-										    	retrOK = false;//flag pre oznacenie chyby 
-												break;
-										    }
-										}
-
-  										filesize = getVirtualSize(tmpfilename.c_str());
-  										ifstream f(tmpfilename.c_str());
-										//nacitanie emailu
-										while(!f.eof()){
-											getline(f,tmpline);
-											if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
-												break;
-											}
-											//cout << tmpline << endl;
-											//appendovanie do msg
-											msg.append(tmpline);
-											msg += "\r\n";
-										}
-										f.close();
-										break;
-  									}
-  								}
-
-  								closedir(d);
-
-  								if(msgnum > count || msgnum <= 0){//osetrenie cisla mailu
+  								
+   								if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//osetrenie cisla mailu
   									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
 									break;
   								}
 
-  								
+  								else{
 
-  								if(retrOK){//ak vsetko prebehlo v poriadku
-  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + "\r\n.\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
-		  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
-										break;
+  									tmpfilename = tmpdir + "/" + geciszopokurva[msgnum];
+									//kontrola ci sprava bola mazana
+
+									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+									    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+									   	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+									    	retrOK = false;//flag pre oznacenie chyby 
+											break;
+									    }
+									}
+									//ziskanie velkosti -NIEE, ziskat z infor file!!!
+									filesize = getVirtualSize(tmpfilename.c_str());
+									ifstream f(tmpfilename.c_str());
+									//nacitanie emailu
+									while(!f.eof()){
+										getline(f,tmpline);
+										if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
+											break;
+										}
+										//appendovanie do msg
+										msg.append(tmpline);
+										msg += "\r\n";
+									}
+									f.close();
+	  								
+	  								if(retrOK){//ak vsetko prebehlo v poriadku
+	  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + "\r\n.\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
+			  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+											break;
+  									}
   								}
+  								closedir(d);
 
   							}
   							else{//problem s cur priecinkom, ukoncime program
@@ -852,47 +899,43 @@ void* doSth(void *arg){
   							}	
   							break;
   						}
+
   						case dele:{
   							if(!argument.compare("")){//dele ma povinny argument
   								send(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"),0);
 								break;
   							}
+  							DIR *d = NULL;
   							bool delOK = true;
   							int msgnum = stoi(argument,nullptr,10);//TODO osetrit
-  							DIR *d = NULL;
-  							struct dirent *file;
-  							int count = 0;
+  							msgnum -= 1;
   							string tmpdir = vars.maildir + "/cur";
   							if((d = opendir(tmpdir.c_str())) != NULL){
-  								while((file = readdir(d)) != NULL){
-  									if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
-  										continue;
-  									}
-  									count++;
-  									if(count==msgnum){
-  										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
-										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-										    if(!strcmp(file->d_name,*iterator)){//ak vybrany mail bol uz oznaceny na mazanie chyba
-										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
-												delOK = false;
-												break;
-										    }
-										}
-  										tmpdel_list.push_back(file->d_name);			
-  										break;
-  									}
-  								}
-  								if(msgnum > count || msgnum <= 0){
+								if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//kontrola intervalu 
   									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+									closedir(d);
 									break;
   								}
-  								closedir(d);
-  								if(delOK){//posleme ok ak bol subor oznaceny ako mazany(kvoli tomu aby tato hlaska sa neposielala pri chybe)
-  									string tmpAnsw = "+OK msg deleted\r\n";
-  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+  								else{
+									//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
+									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+									    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+									    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+											delOK = false;
+											break;
+									    }
+									}
+
+										
+									
+	  								if(delOK){//posleme ok ak bol subor oznaceny ako mazany(kvoli tomu aby tato hlaska sa neposielala pri chybe)
+	  									tmpdel_list.push_back((char*)geciszopokurva[msgnum].c_str());		
+	  									string tmpAnsw = "+OK msg deleted\r\n";
+	  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+	  								}
   								}
 
-								break;
+  								closedir(d);
   							}
   							else{//problem s cur priecinkom, ukoncime program
   								cerr << "chyba pri otvarani priecinku cur" << endl;
