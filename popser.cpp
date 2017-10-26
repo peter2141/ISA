@@ -80,7 +80,7 @@ commands hashCommand(string command){
 	if (!command.compare("pass")) return pass;
 	if (!command.compare("apop")) return apop;
 	if (!command.compare("stat")) return staat;
-	if (!command.compare("lst")) return lst;
+	if (!command.compare("list")) return lst;
 	if (!command.compare("retr")) return retr;
 	if (!command.compare("dele")) return dele;
 	if (!command.compare("noop")) return noop;
@@ -410,7 +410,7 @@ void* doSth(void *arg){
   	list<char*> tmpdel_list;
   	//vector pre subory v current - kvoli cislovanie mailov   	pridanie suborov v cur do vectoru,osetrit ci sa da otvorit cur??
   	vector<string> geciszopokurva;
-  	getFilesInCur(geciszopokurva,vars.maildir);
+  	
   	//geciszopokurva[0] = "picsa";
   //	cout << geciszopokurva[0] << endl;
 
@@ -538,6 +538,9 @@ void* doSth(void *arg){
   										close(acceptSocket);//odpojime klienta, alebo neodpajat????
   										return(NULL);
   									}
+
+  									getFilesInCur(geciszopokurva,vars.maildir);//ziskame subory v current, preto tu lebo iba teraz mozeme pristupovat k maildiru
+
 
   									bool firstRun = true;//kontrola prveho spustenia
 
@@ -752,9 +755,129 @@ void* doSth(void *arg){
 				case trans:{
 
 					switch (hashCommand(commandLow)){
-  						case lst:
+  						case lst:{
+   							if(!argument.compare("")){//nebol zadany parameter, tj poslat informaciu o vsetkych spravach
+  								DIR *d = NULL;
+  								string tmpdir = vars.maildir + "/cur";
+  								int msgcnt = 0;//premenn pra cyklus(indexovanie vo vectoru nazvov suborov)
+  								int msgnum = 1;//premenna pre cislo sprav
+  								int msgsen = 0;//pocet mailov v maildiru(ktore nie su uznacene na mazanie)
+  								//stringy pre poslanie odpovede
+  								string answ = "";
+  								string tmpAnsw = "";
+  								bool listOK = true;//flag
+  								int sizesum = 0;//pocet bajtov
+   								if((d = opendir(tmpdir.c_str())) != NULL){									
+   									while(msgcnt < (int)geciszopokurva.size()){//prejdeme vsetky subory ktore sa nachadzaju v current
+										
+										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
+										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+										    if(!geciszopokurva[msgcnt].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+												listOK = false;
+												break;
+										    }
+										}
 
+		  								if(listOK){//ak cislo v poriadku
+	  										int tmpsize;
+	  										char filename[256];
+	  										string line;
+	  										ifstream file;
+	  										file.open("info.txt");		
+
+	  										while(!file.eof()){//kym neni eof
+												getline(file,line);
+												//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+												if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+													break;
+												}
+												sscanf(line.c_str(),"%[^/]/%*[^/]/%d",filename,&tmpsize);//nacitame nazov a velkost suboru
+												if(!geciszopokurva[msgcnt].compare(filename)){//ak sme nasli subor 
+													break; // v tmpsize mame velkost daneho suboru
+												}
+											}
+	  										file.close();
+		  									sizesum += tmpsize;
+		  									msgsen++;
+		  									tmpAnsw.append(to_string(msgnum)+ " " + to_string(tmpsize) + "\r\n");//pridavame do odpovede riadok pre danu spravu
+		  								}
+
+		  								msgnum++;
+		  								msgcnt++;
+		  								listOK = true;
+		  							}
+		  							answ = "+OK " + to_string(msgsen) + " messages (" + to_string(sizesum) + " octets)\r\n";//prvy riadok odpovede
+		  							tmpAnsw.append(".\r\n");//ukoncenie spravy
+		  							answ.append(tmpAnsw);//spojenie 1. riadku a tela
+		  							send(acceptSocket,answ.c_str(),strlen(answ.c_str()),0);//odosielanie
+  									closedir(d);
+	  							}
+	  							else{//problem s cur priecinkom, ukoncime program
+	  								cerr << "chyba pri otvarani priecinku cur" << endl;
+	  								close(acceptSocket);
+	  								mailMutex.unlock();
+	  								exit(1);
+	  							}	
+  							}
+  							else{//bol zadany argument
+  								int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
+  								msgnum -= 1;//kvoli indexovaniu vo vectore 
+  								DIR *d = NULL;
+  								string tmpdir = vars.maildir + "/cur";
+  								bool listOK = true;
+
+  								if((d = opendir(tmpdir.c_str())) != NULL){									
+									if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//kontrola intervalu 
+	  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+										closedir(d);
+										break;
+	  								}
+	  								else{
+
+										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
+										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+										    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+												listOK = false;
+												break;
+										    }
+										}
+
+		  								if(listOK){//ak cislo v poriadku
+	  										int tmpsize;
+	  										char filename[256];
+	  										string line;
+	  										ifstream file;
+	  										file.open("info.txt");		
+
+	  										while(!file.eof()){//kym neni eof
+												getline(file,line);
+												//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+												if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+													break;
+												}
+												sscanf(line.c_str(),"%[^/]/%*[^/]/%d",filename,&tmpsize);//nacitame nazov a velkost suboru
+												if(!geciszopokurva[msgnum].compare(filename)){//ak sme nasli subor 
+													break; // v tmpsize mame velkost daneho suboru
+												}
+											}
+	  										file.close();
+		  									string tmpAnsw = "+OK " + to_string(++msgnum)+ " " + to_string(tmpsize) + "\r\n";
+		  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+		  								}
+	  								}
+
+  									closedir(d);
+	  							}
+	  							else{//problem s cur priecinkom, ukoncime program
+	  								cerr << "chyba pri otvarani priecinku cur" << endl;
+	  								close(acceptSocket);
+	  								mailMutex.unlock();
+	  								exit(1);
+	  							}	
+  							}
   							break;
+  						}
 
   						case staat:{
   							// https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
@@ -786,7 +909,6 @@ void* doSth(void *arg){
 
 									//kontrola ci subor je oznaceny ako mazany
 									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-									    cout << *iterator << endl;
 									    if(!strcmp(filename,*iterator)){//ak mail bol uz oznaceny na mazanie
 									    	wasdeleted = true;
 									    	break;
@@ -867,7 +989,7 @@ void* doSth(void *arg){
 											break;
 									    }
 									}
-									//ziskanie velkosti -NIEE, ziskat z infor file!!!
+									//ziskanie velkosti -NIEE, ziskat z infor file!!! TODO
 									filesize = getVirtualSize(tmpfilename.c_str());
 									ifstream f(tmpfilename.c_str());
 									//nacitanie emailu
@@ -949,9 +1071,123 @@ void* doSth(void *arg){
   							tmpdel_list.clear();
   							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
-  						case uidl:
+  						case uidl:{//podobne k listu len vraciame ine veci
+  							if(!argument.compare("")){//nebol zadany parameter, tj poslat informaciu o vsetkych spravach
+  								DIR *d = NULL;
+  								string tmpdir = vars.maildir + "/cur";
+  								int msgcnt = 0;//premenn pra cyklus(indexovanie vo vectoru nazvov suborov)
+  								int msgnum = 1;//premenna pre cislo sprav
+  								string answ = "";
+  								string tmpAnsw = "";
+  								bool uidlOK = true;//flag
+   								if((d = opendir(tmpdir.c_str())) != NULL){									
+   									while(msgcnt < (int)geciszopokurva.size()){//prejdeme vsetky subory ktore sa nachadzaju v current
+										
+										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
+										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+										    if(!geciszopokurva[msgcnt].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+												uidlOK = false;
+												break;
+										    }
+										}
 
+		  								if(uidlOK){//ak cislo v poriadku
+	  										char filename[256];
+	  										char uidl[256];//osetrit ze negenerujem taky dlhe uidl TODO
+	  										string line;
+	  										ifstream file;
+	  										file.open("info.txt");		
+	  										while(!file.eof()){//kym neni eof
+												getline(file,line);
+												//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+												if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+													break;
+												}
+												sscanf(line.c_str(),"%[^/]/%[^/]/%*d",filename,uidl);//nacitame nazov a velkost suboru
+												if(!geciszopokurva[msgcnt].compare(filename)){//ak sme nasli subor 
+													break; // v uidl mame uidl
+												}
+											}
+	  										file.close();
+		  									tmpAnsw.append(to_string(msgnum)+ " " + string(uidl) + "\r\n");//pridavame do odpovede riadok pre danu spravu
+		  								}
+
+		  								msgnum++;
+		  								msgcnt++;
+		  								uidlOK = true;
+		  							}
+		  							answ = "+OK\r\n";
+		  							tmpAnsw.append(".\r\n");//ukoncenie spravy
+		  							answ.append(tmpAnsw);//spojenie 1. riadku a tela
+		  							send(acceptSocket,answ.c_str(),strlen(answ.c_str()),0);//odosielanie
+  									closedir(d);
+	  							}
+	  							else{//problem s cur priecinkom, ukoncime program
+	  								cerr << "chyba pri otvarani priecinku cur" << endl;
+	  								close(acceptSocket);
+	  								mailMutex.unlock();
+	  								exit(1);
+	  							}	
+  							}
+  							else{//bol zadany argument
+  								int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
+  								msgnum -= 1;//kvoli indexovaniu vo vectore 
+  								DIR *d = NULL;
+  								string tmpdir = vars.maildir + "/cur";
+  								bool deleOK = true;
+
+  								if((d = opendir(tmpdir.c_str())) != NULL){									
+									if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//kontrola intervalu 
+	  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+										closedir(d);
+										break;
+	  								}
+	  								else{
+
+										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
+										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
+										    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+												deleOK = false;
+												break;
+										    }
+										}
+
+		  								if(deleOK){//ak cislo v poriadku
+	  										char filename[256];
+	  										char uidl[256];
+	  										string line;
+	  										ifstream file;
+	  										file.open("info.txt");		
+
+	  										while(!file.eof()){//kym neni eof
+												getline(file,line);
+												//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+												if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+													break;
+												}
+												sscanf(line.c_str(),"%[^/]/%[^/]/%*d",filename,uidl);//nacitame nazov a velkost suboru
+												if(!geciszopokurva[msgnum].compare(filename)){//ak sme nasli subor 
+													break; // v tmpsize mame velkost daneho suboru
+												}
+											}
+	  										file.close();
+		  									string tmpAnsw = "+OK " + to_string(++msgnum) + " " + string(uidl) + "\r\n";
+		  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+		  								}
+	  								}
+
+  									closedir(d);
+	  							}
+	  							else{//problem s cur priecinkom, ukoncime program
+	  								cerr << "chyba pri otvarani priecinku cur" << endl;
+	  								close(acceptSocket);
+	  								mailMutex.unlock();
+	  								exit(1);
+	  							}	
+  							}
   							break;
+  						}
   						case noop://nerob nic
   							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
   							break;
