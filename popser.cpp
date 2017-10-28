@@ -33,6 +33,7 @@ using namespace std;
 //premenna pre zaznamenie signalu SIGINT
 static int volatile geci = 0;
 mutex mailMutex;
+int counter=0; //pre hashovanie
 
 //enum pre switch ktory indikuje stav
 enum states {
@@ -331,25 +332,21 @@ void getFilesInCur(vector<string>& files,string maildir){
 	closedir(tmpdir);
 }
 
-/*char* getFilesInCur2(string maildir){
-	char files[50][100];
-	int i = 0;
-	DIR *tmpdir=NULL;
-	struct dirent *tmpfile;
-	string curdir = maildir + "/cur";
-	tmpdir = opendir(curdir.c_str());
-	while((tmpfile = readdir(tmpdir)) != NULL){
-			if(!strcmp(tmpfile->d_name,".") || !strcmp(tmpfile->d_name,"..") ){
-				continue;
-			}
-			//pridame nazov suboru do vectoru mien
-			//files.push_back(tmpfile->d_name);
-			strcpy(files[i],tmpfile->d_name);
-			i++;
-	}
-	closedir(tmpdir);
-	return *files;
-}*/
+
+void createUIDL(char* filename, string& UIDL){
+	UIDL = to_string(time(NULL)) + string(filename) + to_string(counter);
+}
+
+void md5hash(string stringToHash, string& hash){
+	unsigned char md5[MD5_DIGEST_LENGTH];
+	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
+	//staci 32???
+	char mdString[32];
+   	for(int i = 0; i < 16; i++)
+	sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
+ 	hash = mdString;
+}
+
 
 
 
@@ -380,8 +377,8 @@ void* doSth(void *arg){
 	send(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()),0);
 
 	//vypocitanie hashu
-	/*string stringToHash = welcomeMsg + vars.password;
-	unsigned char md5[MD5_DIGEST_LENGTH];
+	string stringToHash = welcomeMsg + vars.password;
+	/*unsigned char md5[MD5_DIGEST_LENGTH];
 	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
 	
 

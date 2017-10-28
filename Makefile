@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-std=c++11 -Wall -Wextra -pedantic -pthread -L /usr/lib/libssl.so -L /usr/lib/libcrypto.so -lssl -lcrypto -g
+CFLAGS=-std=c++11 -Wall -Wextra -pedantic -pthread -lssl -lcrypto -g
 PROJ=popser
 
 all: $(PROJ)
