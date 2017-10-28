@@ -70,9 +70,15 @@ struct threadVar{
 
 //konverzia retazcov stavu serveru na hodnoty v enum k pouzitiou v case
 states hashState(string state){
-	if(!state.compare("authentication")) return auth;
-	if(!state.compare("transaction")) return trans;
-	if(!state.compare("update")) return update;
+	if(!state.compare("authentication")){
+		return auth;
+	} 
+	else if(!state.compare("transaction")){
+		return trans;
+	} 
+	else{//(!state.compare("update")) return update;
+		return update;
+	}
 }
 
 //konverzia retazcov prikazov na hodnoty v enum k pouzitiou v case
@@ -93,8 +99,6 @@ commands hashCommand(string command){
 
 string absolutePath(const char *filename){
 	string path=realpath(filename,NULL);
-	//string ret = path;
-	//free(path);
 	return path;
 }
 
@@ -402,6 +406,8 @@ void* doSth(void *arg){
 		timeout.tv_sec = 600;
   		timeout.tv_usec = 0;
 
+
+
 		//ak vyprsal timeout odpojime klienta
 		if (select(acceptSocket + 1, &set, NULL, NULL, &timeout) == 0){
 			send(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"),0);
@@ -409,8 +415,19 @@ void* doSth(void *arg){
 			mailMutex.unlock();//?????? TODO
     		return (NULL);
 		}
-		
-		
+
+
+		/*if (select(acceptSocket + 1, &set, NULL, NULL, &timeout) == 0){
+
+
+		 if (geci == 1){
+		 	cout << "ending" << endl;
+			mailMutex.unlock();//?????? TODO
+    		return (NULL);
+		 }
+		}*/
+	
+		cout <<"vlaknoo" << endl;
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
 		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
 		int sen; //pre kontrolu send		
@@ -1252,6 +1269,8 @@ void* doSth(void *arg){
             //exit(EXIT_FAILURE);
         }
     }
+    cout << "asdasd" << endl;
+    mailMutex.unlock();//TODOT
     close(acceptSocket);
     return (NULL);
 }
@@ -1297,7 +1316,7 @@ void signalHandler(int x)
 {
 	
 	geci = 1;
-	//exit(x);
+	(void)x;
 }
 
 
@@ -1496,10 +1515,31 @@ int main(int argc, char **argv){
 	FD_ZERO(&set);
 	FD_SET(listenSocket, &set);
 
-	while(1){
+	
 
+
+	vector<int> clientsockets;
+
+
+	//block signal to threads
+	/*sigset_t s;
+
+
+    sigemptyset(&s);
+    sigaddset(&s, SIGQUIT);
+    sigaddset(&s, SIGUSR1);
+    pthread_sigmask(SIG_BLOCK, &s, NULL);
+
+
+    signal(SIGINT, signalHandler);*/
+
+
+	while(geci == 0){
+
+		cout << "seleeect" << endl;
 		//select
 		if (select(listenSocket + 1, &set, NULL, NULL, NULL) == -1){
+			cout << "fasz" << endl;
 			continue;
 		}
 
@@ -1520,6 +1560,8 @@ int main(int argc, char **argv){
 		//pridanie socketu do struktury
 		tmp.socket = acceptSocket;
 		
+
+
 		//vytvorenie vlakna
 		pthread_t myThread;
 
@@ -1527,10 +1569,17 @@ int main(int argc, char **argv){
 			cerr << "Chyba pri vytvarani vlakna" << endl;
 			close(acceptSocket);
 		}
+
+		clientsockets.push_back(acceptSocket);//pridame socket do vectoru socketov
 	}
 
-	//signal handler
-	signal(SIGINT, signalHandler);
+	//prisiel signal SIGINT - signal skoncil
+	for (vector<int>::const_iterator iterator = clientsockets.begin(); iterator != clientsockets.end(); iterator++) {
+		cout << "closing sd" << endl;
+		close(*iterator);
+	}	
+
+	
 
 	//zatvorenie socketu
 	close(listenSocket);
