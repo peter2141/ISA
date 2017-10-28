@@ -375,13 +375,32 @@ void* doSth(void *arg){
   	
 
   	string username;//pre kontrolu username v pass
+
+  	struct timeval timeout;
+
  
 	//------------------------------------------------------------------------------------------------------------------------------
 	//HLAVNA SMYCKA
 	//smycka pre zikavanie dat
 	while (1)		
 	{		
+		//priprava pre select
+		fd_set set;
+		FD_ZERO(&set);
+		FD_SET(acceptSocket, &set);
 
+		//timeot pre select - 10 minut
+		timeout.tv_sec = 600;
+  		timeout.tv_usec = 0;
+
+		//ak vyprsal timeout odpojime klienta
+		if (select(acceptSocket + 1, &set, NULL, NULL, &timeout) == 0){
+			send(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"),0);
+			close(acceptSocket);
+			mailMutex.unlock();//?????? TODO
+    		return (NULL);
+		}
+		
 		
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
 		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
