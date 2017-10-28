@@ -253,7 +253,16 @@ class Arguments{
 		
 };
 
-
+bool isnumber(string number){
+	char* ptr = NULL; 
+	strtol(number.c_str(),&ptr,10);
+	if(*ptr != '\0'){
+		return false;
+	}
+	else{
+		return true;
+	}
+}
 
 //velkost zadaneho suboru
 int fileSize(const char *file){
@@ -782,6 +791,11 @@ void* doSth(void *arg){
 	  							}	
   							}
   							else{//bol zadany argument
+  								//kontrola ci argument je cislo
+  								if(!isnumber(argument)){
+  									send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+  									break;
+  								}
   								int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
   								msgnum -= 1;//kvoli indexovaniu vo vectore 
   								DIR *d = NULL;
@@ -919,10 +933,16 @@ void* doSth(void *arg){
   						}
 
   						case retr:{
+  							//retr ma povinny argument cislo spravy
   							if(!argument.compare("")){//retr ma povinny argument
   								send(acceptSocket,"-ERR Retr need message number\r\n",strlen("-ERR Retr need message number\r\n"),0);
 								break;
   							}
+  							//kontrola ci argument je cislo
+							if(!isnumber(argument)){
+								send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+								break;
+							}
   							DIR *d = NULL;
   							int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
   							msgnum -= 1;//kvoli indexovaniu vo vectore 
@@ -1002,6 +1022,11 @@ void* doSth(void *arg){
   								send(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"),0);
 								break;
   							}
+  							//kontrola ci argument je cislo
+							if(!isnumber(argument)){
+								send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+								break;
+							}
   							DIR *d = NULL;
   							bool delOK = true;
   							int msgnum = stoi(argument,nullptr,10);//TODO osetrit
@@ -1105,6 +1130,11 @@ void* doSth(void *arg){
 	  							}	
   							}
   							else{//bol zadany argument
+  								//kontrola ci argument je cislo
+  								if(!isnumber(argument)){
+  									send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+  									break;
+  								}
   								int msgnum = stoi(argument,nullptr,10);//TODO osetrit - ak neni cislo tak error
   								msgnum -= 1;//kvoli indexovaniu vo vectore 
   								DIR *d = NULL;
