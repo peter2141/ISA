@@ -159,9 +159,6 @@ class Arguments{
 					}
 					
 
-					
-
-
 					//odstranenie pomocnych suborov 
 					if(remove("reset.txt")!=0){
 						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
@@ -199,31 +196,10 @@ class Arguments{
 				}
 
 				resetIn.close();
-				/*deleteIn.open("delafterreset.txt", ios::in);
-				if ((deleteIn.rdstate() & std::ifstream::failbit ) == 0 ){ //este nebol pouzity reset
-					string filename;
-					while(!deleteIn.eof()){//kym neni eof
-						getline(deleteIn,filename);
-						//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
-						if ((deleteIn.rdstate() & std::ifstream::eofbit ) != 0 ){
-							break;
-						}
-						//mazanie z cur
-						int res = remove(filename.c_str());
-						if(res != 0){ // preco je chyba??
-							cerr << "chyba pri mazani z cur" << endl;
-								//posunut vsetko naspat? 
-							exit(1);
-						}
-					}
-					deleteIn.close();
-					if(remove("delafterreset.txt")!=0){
-						cerr << "Chyba pri mazani pomocneho suboru na ukladanie suborov na mazanie po reseste" << endl;
-					}
-				}*/
 
 				exit(0);
 			}
+
 			//klasicky rezim, kontrola povinnych parametrov a detekcia volitelnych a nepodporovanych
 			else{
 				//flagy pre getopt
@@ -333,9 +309,6 @@ void getFilesInCur(vector<string>& files,string maildir){
 }
 
 
-void createUIDL(char* filename, string& UIDL){
-	UIDL = to_string(time(NULL)) + string(filename) + to_string(counter);
-}
 
 void md5hash(string stringToHash, string& hash){
 	unsigned char md5[MD5_DIGEST_LENGTH];
@@ -347,6 +320,10 @@ void md5hash(string stringToHash, string& hash){
  	hash = mdString;
 }
 
+void createUIDL(char* filename, string& UIDL){
+	string tmp = to_string(time(NULL)) + string(filename) + to_string(counter);
+	md5hash(tmp,UIDL);
+}
 
 
 
@@ -378,22 +355,10 @@ void* doSth(void *arg){
 
 	//vypocitanie hashu
 	string stringToHash = welcomeMsg + vars.password;
-	/*unsigned char md5[MD5_DIGEST_LENGTH];
-	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
-	
 
-	//staci 32???
-	char mdString[32];
- 
-   	for(int i = 0; i < 16; i++)
-	sprintf(&mdString[i*2], "%02x", (unsigned int)md5[i]);
- 	
- 	string hash = mdString;
- 	hash = "vars.username + " " + hash; //pridanie username
- 	cout << hash << endl;
-    */    
+ 	string hash;
 
-	string hash = "";//tmp pre testovanie na ubuntu, pri 
+ 	md5hash(stringToHash,hash);
 
 
 	//premenna pre buffer
@@ -408,8 +373,6 @@ void* doSth(void *arg){
   	//vector pre subory v current - kvoli cislovanie mailov   	pridanie suborov v cur do vectoru,osetrit ci sa da otvorit cur??
   	vector<string> geciszopokurva;
   	
-  	//geciszopokurva[0] = "picsa";
-  //	cout << geciszopokurva[0] << endl;
 
   	string username;//pre kontrolu username v pass
  
@@ -492,11 +455,6 @@ void* doSth(void *arg){
   				commandLow += tolower(command[i],loc);
   			}
 
-
-  			//TODO zistit velkost emailov + poradie, ako? 
-
-
-  			
   			switch(hashState(state)){
 
 
@@ -508,17 +466,12 @@ void* doSth(void *arg){
 
   						case user://prisiel prikaz user
 							if(vars.crypt){//bol zadany parameter -c, USER after USER moze byt
-								//if(vars.username.compare(argument) == 0){//spravny username
-									//user sa kontroluje az pri pass
-									send(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"),0);
-									username = argument;
-									userOK = true;
-									break;
-								//}
-								//else{//zly username
-								//	send(acceptSocket,"-ERR Don't know this user\r\n",strlen("-ERR Don't know this user\r\n"),0);
-								//	break;
-								//}
+
+								send(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"),0);
+								username = argument;
+								userOK = true;
+								break;
+
 							}
 							else{//nebola povolena autentifikacia USER - PASS
 								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
@@ -546,10 +499,6 @@ void* doSth(void *arg){
   									if(stat("reset.txt", &buffer) == 0){
   										firstRun = false;
   									}
-  									//cout << geciszopokurva[0] << endl;
-  									//char* asd = geciszopokurva[0];
-  									//cout << asd << endl;
-  									//cout << geciszopokurva[0] << endl;
   									//vytvorime potrebne pomocne subory
   									if(firstRun){
   										ofstream resfile("reset.txt");
@@ -561,7 +510,6 @@ void* doSth(void *arg){
 
   									infoFile.open("info.txt", std::ofstream::app);
   									resetFile.open("reset.txt",std::ofstream::app);
-  									//geciszopokurva.push_back("sda");
 
   									//presun z new do cur
   									DIR *dir=NULL;
@@ -569,8 +517,6 @@ void* doSth(void *arg){
 									string tmpdir = vars.maildir + "/new";
 									string tmpfilename1,tmpfilename2;	
 
-									//cout << geciszopokurva[0] << endl;
-									//cout << geciszopokurva.size() << endl;
 									if((dir = opendir(tmpdir.c_str())) != NULL){
 										while((file = readdir(dir)) != NULL){
 											if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
@@ -591,11 +537,17 @@ void* doSth(void *arg){
 											//pridanie nazvu a uidl do pomocneho suboru  
 											infoFile <<file->d_name;
 											infoFile << "/";
-											infoFile << "UIDL/";//TODO vytvroenie a ziskanie UIDL
+
+											//ziskame UIDl a pridame do suboru
+											string uidl;
+											createUIDL(file->d_name,uidl),
+											infoFile << uidl;
+											infoFile << "/";
 											//pridame aj velkost suboru(virtualnu tj. s CRLF)
 											infoFile << getVirtualSize(tmpfilename2)<<endl;
 											//pridanie absolutnej cesty do suboru potrebneho k resetu
 											resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
+											counter++;
 
 
 										}
@@ -613,13 +565,7 @@ void* doSth(void *arg){
 									
 									infoFile.close();
  									resetFile.close();
-									
- 									//geciszopokurva = geciszopokurva1;
- 									//cout << geciszopokurva[0] << endl;
- 									//cout << geciszopokurva[0] << endl;
- 									//cout << geciszopokurva[1] << endl;
- 									//cout << geciszopokurva[2] << endl;
- 									//cout << geciszopokurva1[0] << endl;
+
   									state = "transaction";
   									break;
   								}
@@ -995,14 +941,27 @@ void* doSth(void *arg){
 										if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
 											break;
 										}
+										//kontrola ci je na zaciatku riadku bodka, ak ano tak pridame dalsie(byte-stuff)
+										if(tmpline[0] == '.'){
+											tmpline.insert(0, 1, '.');
+										}
+
+
+
 										//appendovanie do msg
 										msg.append(tmpline);
-										msg += "\r\n";
+										if(tmpline[tmpline.length()-1] != '\r'){//ak riadok bol zakonceny iba s /n
+											msg += "\r\n";
+										}
+										else{//ak riadok bol nzakonceny s /r/n  tak pridame iba /n
+											msg += "\n";
+										}
+										
 									}
 									f.close();
 	  								
 	  								if(retrOK){//ak vsetko prebehlo v poriadku
-	  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + "\r\n.\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
+	  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + ".\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
 			  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
 											break;
   									}
