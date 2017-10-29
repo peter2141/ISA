@@ -32,8 +32,10 @@ using namespace std;
 
 //premenna pre zaznamenie signalu SIGINT
 static int volatile geci = 0;
+//mutex pre locknutie maildiru
 mutex mailMutex;
 int counter=0; //pre hashovanie
+int threadcount = 0;
 
 //enum pre switch ktory indikuje stav
 enum states {
@@ -389,13 +391,16 @@ void* doSth(void *arg){
 
   	string username;//pre kontrolu username v pass
 
-  	struct timeval timeout;
+  	//struct timeval timeout;
 
- 
+
+  	//premenna pre meranie casu
+  	long int timestamp=0;
+
 	//------------------------------------------------------------------------------------------------------------------------------
 	//HLAVNA SMYCKA
 	//smycka pre zikavanie dat
-	while (1)		
+	while (geci == 0)		
 	{		
 		//priprava pre select
 		fd_set set;
@@ -403,18 +408,24 @@ void* doSth(void *arg){
 		FD_SET(acceptSocket, &set);
 
 		//timeot pre select - 10 minut
-		timeout.tv_sec = 600;
-  		timeout.tv_usec = 0;
+		//timeout.tv_sec = 600;
+  		//timeout.tv_usec = 0;
+
 
 
 
 		//ak vyprsal timeout odpojime klienta
-		if (select(acceptSocket + 1, &set, NULL, NULL, &timeout) == 0){
+		/*int selret;
+		selret = select(acceptSocket + 1, &set, NULL, NULL, &timeout);
+		if(selret == -1){
+			break;
+		}
+		else if (selret == 0){
 			send(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"),0);
 			close(acceptSocket);
 			mailMutex.unlock();//?????? TODO
     		return (NULL);
-		}
+		}*/
 
 
 		/*if (select(acceptSocket + 1, &set, NULL, NULL, &timeout) == 0){
@@ -427,13 +438,13 @@ void* doSth(void *arg){
 		 }
 		}*/
 	
-		cout <<"vlaknoo" << endl;
+
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
 		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
 		int sen; //pre kontrolu send		
 		if (res > 0)
 		{
-			
+			timestamp = 0;//vynulujeme casovac ak 
 			//vytvorenie string z Cstring kvoli jednoduchsej prace s retazcom
 			string message = buff;
 			
@@ -531,6 +542,7 @@ void* doSth(void *arg){
   									if(!mailMutex.try_lock()){
   										send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
   										close(acceptSocket);//odpojime klienta, alebo neodpajat????
+  										threadcount--;
   										return(NULL);
   									}
 
@@ -605,6 +617,7 @@ void* doSth(void *arg){
 										cerr << "chyba pri otvarani priecinku cur" << endl;
 										close(acceptSocket);
 			  							mailMutex.unlock();
+			  							threadcount--;
 										exit(1);
 									}	//presun do dalsieho stavu
 									
@@ -641,6 +654,7 @@ void* doSth(void *arg){
 								if(!mailMutex.try_lock()){
 									send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
 									close(acceptSocket);//odpojime klienta, alebo neodpajat????
+									threadcount--;
 									return(NULL);
 								}
 								//kontrola ci existuje subor reset
@@ -732,6 +746,7 @@ void* doSth(void *arg){
   							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
   							close(acceptSocket);
   							mailMutex.unlock();
+  							threadcount--;
   							return(NULL);
   						default:
   							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
@@ -804,6 +819,7 @@ void* doSth(void *arg){
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
 	  								mailMutex.unlock();
+	  								threadcount--;
 	  								exit(1);
 	  							}	
   							}
@@ -866,6 +882,7 @@ void* doSth(void *arg){
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
 	  								mailMutex.unlock();
+	  								threadcount--;
 	  								exit(1);
 	  							}	
   							}
@@ -944,6 +961,7 @@ void* doSth(void *arg){
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
   								mailMutex.unlock();
+  								threadcount--;
   								exit(1);
   							}	
   							break;
@@ -1029,6 +1047,7 @@ void* doSth(void *arg){
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
   								mailMutex.unlock();
+  								threadcount--;
   								exit(1);
   							}	
   							break;
@@ -1080,6 +1099,7 @@ void* doSth(void *arg){
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
   								mailMutex.unlock();
+  								threadcount--;
   								exit(1);
   							}	
   							break;
@@ -1143,6 +1163,7 @@ void* doSth(void *arg){
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
 	  								mailMutex.unlock();
+	  								threadcount--;
 	  								exit(1);
 	  							}	
   							}
@@ -1241,6 +1262,7 @@ void* doSth(void *arg){
 					deleted.close();
 					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
 					mailMutex.unlock();
+					threadcount--;
 					return(NULL);
 					break;	
 				}	
@@ -1259,6 +1281,17 @@ void* doSth(void *arg){
         }
         else if (errno == EAGAIN) // == EWOULDBLOCK
         {
+        	if(timestamp == 0){
+        		timestamp = (long int)time(NULL);//ak bol nulovany pridame cas ked prvy krat sa neblokovalo tj neprislo nic
+        	}
+        	long int tmptime = (long int)time(NULL) - timestamp; //pozrieme rozdiel casu
+            if(tmptime >= 600){//ak preslo 10 minut
+            	send(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"),0);
+				close(acceptSocket);
+				mailMutex.unlock();//?????? TODO
+				threadcount--;
+    			return (NULL);
+            }
             continue;
         }
         else//ak chyba
@@ -1269,9 +1302,11 @@ void* doSth(void *arg){
             //exit(EXIT_FAILURE);
         }
     }
-    cout << "asdasd" << endl;
+    //ukonci sa thread
     mailMutex.unlock();//TODOT
     close(acceptSocket);
+    threadcount--;
+    cout << to_string(threadcount) << endl;
     return (NULL);
 }
 
@@ -1518,7 +1553,6 @@ int main(int argc, char **argv){
 	
 
 
-	vector<int> clientsockets;
 
 
 	//block signal to threads
@@ -1528,18 +1562,16 @@ int main(int argc, char **argv){
     sigemptyset(&s);
     sigaddset(&s, SIGQUIT);
     sigaddset(&s, SIGUSR1);
-    pthread_sigmask(SIG_BLOCK, &s, NULL);
+    pthread_sigmask(SIG_BLOCK, &s, NULL);*/
 
 
-    signal(SIGINT, signalHandler);*/
+    signal(SIGINT, signalHandler);
 
 
 	while(geci == 0){
 
-		cout << "seleeect" << endl;
 		//select
 		if (select(listenSocket + 1, &set, NULL, NULL, NULL) == -1){
-			cout << "fasz" << endl;
 			continue;
 		}
 
@@ -1570,19 +1602,12 @@ int main(int argc, char **argv){
 			close(acceptSocket);
 		}
 
-		clientsockets.push_back(acceptSocket);//pridame socket do vectoru socketov
+		threadcount++;
 	}
-
-	//prisiel signal SIGINT - signal skoncil
-	for (vector<int>::const_iterator iterator = clientsockets.begin(); iterator != clientsockets.end(); iterator++) {
-		cout << "closing sd" << endl;
-		close(*iterator);
-	}	
-
-	
 
 	//zatvorenie socketu
 	close(listenSocket);
 
+	while(threadcount);//cakame kym sa kazde vlano ukonci
     exit(0);
 }
