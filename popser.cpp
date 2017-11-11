@@ -1,3 +1,10 @@
+/*POP3 server
+* Predmet: ISA
+* Autor: Peter Suhaj(xsuhaj02)
+* Rocnik: 2017/2018
+* Subor: popser.cpp
+*/
+
 #include <iostream>
 #include <cstdlib>
 #include <string>
@@ -25,7 +32,9 @@
 #include <list>
 #include <vector>
 
+//makro na velkost bufferu pre prijimanie
 #define BUFSIZE  1024
+//makro pre frontu pri select
 #define QUEUE	2
 
 using namespace std;
@@ -112,6 +121,7 @@ class Arguments{
 	string authfile1;
 	bool crypt1=false;
 	bool reset1=false;
+	
 	public:
 		//metody pre zistenie hodnot privatnych premennych
 		int port(){return (int)port1;}
@@ -260,6 +270,7 @@ class Arguments{
 		
 };
 
+//kontrola ci string je platne cislo
 bool isnumber(string number){
 	char* ptr = NULL; 
 	strtol(number.c_str(),&ptr,10);
@@ -305,6 +316,7 @@ int getVirtualSize(string filename){
 	return size;
 }
 
+//ziskanie nazvov suborov v zadanom pricinku
 void getFilesInCur(vector<string>& files,string maildir){
 	DIR *tmpdir=NULL;
 	struct dirent *tmpfile;
@@ -317,15 +329,13 @@ void getFilesInCur(vector<string>& files,string maildir){
 			else{
 				//pridame nazov suboru do vectoru mien
 				files.push_back(string(tmpfile->d_name));
-			}
-
-			
+			}		
 	}
 	closedir(tmpdir);
 }
 
 
-
+//generovanie md5 hash zo stringu
 void md5hash(string stringToHash, string& hash){
 	unsigned char md5[MD5_DIGEST_LENGTH];
 	MD5((unsigned char *)stringToHash.c_str(),stringToHash.size(),md5);
@@ -336,6 +346,7 @@ void md5hash(string stringToHash, string& hash){
  	hash = mdString;
 }
 
+//vytvaranie unikatneho identifikatoru
 void createUIDL(char* filename, string& UIDL){
 	string tmp = to_string(time(NULL)) + string(filename) + to_string(counter);
 	md5hash(tmp,UIDL);
@@ -375,7 +386,7 @@ bool checkMaildir(struct threadVar args){
     return true;
 }
 
-//funkcia pre vlakna=klienty
+//funkcia pre vlakna==klienty
 void* doSth(void *arg){
 	
 	//odpojime thread, netreba nanho cakat v hlavnom threade
@@ -389,7 +400,7 @@ void* doSth(void *arg){
 	int acceptSocket;
 	
 	//sucket castujeme naspat na int
-	acceptSocket = vars.socket;//*((int *) arg);
+	acceptSocket = vars.socket;
 	
 
 	//vytvorenie uvitacej spravy
@@ -418,13 +429,12 @@ void* doSth(void *arg){
 
 	//zoznam pre maily oznacene ako deleted v DELE, zmazanie v UPDATE
   	list<char*> tmpdel_list;
-  	//vector pre subory v current - kvoli cislovanie mailov   	pridanie suborov v cur do vectoru,osetrit ci sa da otvorit cur??
+
+  	//vector pre subory v current - kvoli cislovanie mailov  pridanie suborov v cur do vectoru,osetrit ci sa da otvorit cur??
   	vector<string> geciszopokurva;
   	
 
-  	string username;//pre kontrolu username v pass
-
-  	//struct timeval timeout;
+  	string username;//pre kontrolu username v apop a pass
 
 
   	//premenna pre meranie casu
@@ -435,10 +445,7 @@ void* doSth(void *arg){
 	//smycka pre zikavanie dat
 	while (geci == 0)		
 	{		
-		//priprava pre select
-		fd_set set;
-		FD_ZERO(&set);
-		FD_SET(acceptSocket, &set);
+
 
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
 		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
@@ -555,7 +562,7 @@ void* doSth(void *arg){
   										return(NULL);
   									}
 
-  									getFilesInCur(geciszopokurva,vars.maildir);//ziskame subory v current, preto tu lebo iba teraz mozeme pristupovat k maildiru
+  									getFilesInCur(geciszopokurva,vars.maildir);//ziskame subory z current ktore su uz tam
 
 
   									bool firstRun = true;//kontrola prveho spustenia
@@ -591,14 +598,14 @@ void* doSth(void *arg){
 											tmpfilename1 = tmpdir + "/"+ file->d_name;
 											tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
 											if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
-												cerr << "chyba pri premenovani(prsune) z new do cur" << endl;
+												cerr << "chyba pri premenovani(presune) z new do cur" << endl;
 												close(acceptSocket);
 			  									mailMutex.unlock();
 			  									//posunut vsetko naspat? 
 												exit(1);
 											}
 
-											//pridame nazov suboru do vectoru mien
+											//pridame nazov noveho suboru do vectoru mien
 											geciszopokurva.push_back(string(file->d_name));
 											//pridanie nazvu a uidl do pomocneho suboru  
 											infoFile <<file->d_name;
@@ -1055,12 +1062,6 @@ void* doSth(void *arg){
 									}
 									file.close();
 
-									//ziskanie velkosti -NIEE, ziskat z infor file!!! TODO
-									//filesize = getVirtualSize(tmpfilename.c_str());
-
-
-
-
 
 									ifstream f(tmpfilename.c_str());
 									//nacitanie emailu
@@ -1073,7 +1074,6 @@ void* doSth(void *arg){
 										if(tmpline[0] == '.'){
 											tmpline.insert(0, 1, '.');
 										}
-
 
 
 										//appendovanie do msg
@@ -1440,7 +1440,6 @@ int main(int argc, char **argv){
     fclose(f);
 
 
-
     //pridanie maildiru do struktury pre funkciu vlakna
     tmp.maildir = args.maildir();
 
@@ -1510,6 +1509,9 @@ int main(int argc, char **argv){
 		}
 	}
 
+
+
+
 	//prepinac -c
 	if(args.crypt()){
 		tmp.crypt = true;
@@ -1518,9 +1520,6 @@ int main(int argc, char **argv){
 		tmp.crypt = false;
 	}
     
-
-
-
 	//nastavenie pre posluchajuci socket
     int listenSocket,acceptSocket;
     struct sockaddr_in server;

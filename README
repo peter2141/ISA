@@ -1,2 +1,35 @@
-TODO
+NÁZOV
+	popser - e-mailový server s podporou protokolu POP3
 
+POUŽITIE
+	popser -h
+	popser -r
+	popser -d maildir -a authfile -p portnum [-r] [-c]
+
+POPIS
+	Program je používaný pre komunikáciu s e-mailovým klientom pomocou protokolu pop3. 
+	Server po spustení beží a vybavuje požiadavky klienta. 
+
+PARAMETRE
+	-h
+		Výpis nápovedy na stdout a úspešné skončenie.
+	
+	-r
+		Vrátenie zložku Mialdir do stavu ako keby nebol server nikdy spustený. 
+		Pri samostatnom použítí vykoná potrebné akcie a úspešne skončí, 
+		pri kombinovaní s inými parametrami tiež vykoná akcie ale pokračuje v behu.
+	
+	-d maildir
+		Udáva cestu k složke Maildir.	
+	
+	-a authfile
+		Udáva cestu k súboru s prihlasovacími údajmi.
+	
+	-p portnum
+		Číslo portu na ktorom server beží.
+	
+	-c
+		Povoliť nešifrovanú autentizáciu klientom.
+
+AUTOR
+	Peter Šuhaj(xsuha02)
