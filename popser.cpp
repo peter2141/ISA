@@ -1466,6 +1466,11 @@ int main(int argc, char **argv){
 				if ( (resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
 					break;
 				}
+				struct stat buffer;   
+				//ak subor uz neexistuje nerobime nic
+				if(stat(filename.c_str(), &buffer) != 0){
+					continue;
+				}
 				size_t pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
 				string tmpfilename2 = filename;
 				tmpfilename2.replace(pos,13,"/Maildir/new/");
@@ -1473,13 +1478,13 @@ int main(int argc, char **argv){
 				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
 				if(res != 0){ // preco je chyba??
 					//TODO spinavy hack(ak sa nepodarilo presunut tak subor je zmazany)
-					continue;
+					//continue;
 
 					//cout << res << endl;
-					/*			
+								
 					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
-						//posunut vsetko naspat? 
-					exit(1);*/
+					//posunut vsetko naspat? pokracovat?  
+					exit(1);
 				}
 			}
 			resetIn.close();

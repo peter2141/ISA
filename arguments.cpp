@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <dirent.h>
+#include <sys/stat.h>
 #include "arguments.hpp"
 
 using namespace std;
@@ -58,7 +59,11 @@ void arguments::parseArgs(int argc, char **argv){
 				if ((resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
 					break;
 				}
-
+				struct stat buffer;   
+				//ak subor uz neexistuje nerobime nic
+				if(stat(filename.c_str(), &buffer) != 0){
+					continue;
+				}
 				tmppath = filename;
 
 				//prepis absolutnej cesty s /cur na /new
@@ -69,10 +74,10 @@ void arguments::parseArgs(int argc, char **argv){
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				if(res != 0){ // preco je chyba??
 					//TODO spinavy hack(ak sa nepodarilo presunut tak subor je zmazany)
-					continue;
-					/*cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
+					//continue;
+					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
 						//posunut vsetko naspat? 
-					exit(1);*/
+					exit(1);
 				}
 				tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur
 			}
