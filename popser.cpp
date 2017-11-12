@@ -1,6 +1,6 @@
-/*POP3 server
+/*Riesenie: POP3 server
 * Predmet: ISA
-* Autor: Peter Suhaj(xsuhaj02)
+* Autor: Peter Šuhaj(xsuhaj02)
 * Rocnik: 2017/2018
 * Subor: popser.cpp
 */
@@ -32,52 +32,17 @@
 #include <list>
 #include <vector>
 
-//makro na velkost bufferu pre prijimanie
-#define BUFSIZE  1024
-//makro pre frontu pri select
-#define QUEUE	2
+#include "popser.hpp"
+#include "arguments.hpp"
 
 using namespace std;
 
+
 //premenna pre zaznamenie signalu SIGINT
 static int volatile geci = 0;
-//mutex pre locknutie maildiru
-mutex mailMutex;
 int counter=0; //pre hashovanie
 int threadcount = 0;
-
-//enum pre switch ktory indikuje stav
-enum states {
-	auth,
-	trans,
-	update
-};
-
-//enum pre switch pri spracovani prikazov
-enum commands{
-	user,
-	pass,
-	apop,
-	staat,
-	lst,
-	retr,
-	dele,
-	noop,
-	rset,
-	uidl,
-	quit,
-	notfound
-};
-
-// struktura pre premenne ktore sa maju predavat vlaknam
-struct threadVar{ 
-	int socket;
-	bool crypt;
-	string username;
-	string password;
-	string maildir;
-};
-
+pthread_mutex_t mailMutex = PTHREAD_MUTEX_INITIALIZER;
 
 //konverzia retazcov stavu serveru na hodnoty v enum k pouzitiou v case
 states hashState(string state){
@@ -113,162 +78,6 @@ string absolutePath(const char *filename){
 	return path;
 }
 
-//trieda pre spracovanie argumentov
-class Arguments{
-	//privatne premenne
-	long port1;
-	string maildir1;
-	string authfile1;
-	bool crypt1=false;
-	bool reset1=false;
-	
-	public:
-		//metody pre zistenie hodnot privatnych premennych
-		int port(){return (int)port1;}
-		string maildir(){return maildir1;}
-		string authfile(){return authfile1;}
-		bool crypt(){return crypt1;}
-		bool reset(){return reset1;}
-		//metoda pre spracovanie argumentov
-		void parseArgs(int argc, char **argv){
-			//hladanie parametru -h(rezim 1)
-			for(int i = 1; i < argc; i++){
-				if(string(argv[i]) == "-h"){
-					cout << "HELP" << endl;
-					exit(0);
-				}
-			}
-			//hladanie parametru -r(rezim 2)
-			if(argc==2 && (string(argv[1])=="-r")){
-				ifstream resetIn;
-				ifstream deleteIn;
-				resetIn.open("reset.txt", ios::in);
-				//kontrola ci existuje subor (da sa otvorit??)
-				if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){//ak existuje subor tak este nebol pouzity reset
-					string filename;
-					string tmppath;
-					size_t pos;
-					while(!resetIn.eof()){//kym neni eof
-						getline(resetIn,filename);
-
-						//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
-						if ((resetIn.rdstate() & std::ifstream::eofbit ) != 0 ){
-							break;
-						}
-
-						tmppath = filename;
-
-						//prepis absolutnej cesty s /cur na /new
-						pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
-						string tmpfilename2 = filename;
-						tmpfilename2.replace(pos,13,"/Maildir/new/");
-						//presun suborov z cur do new
-						int res = rename(filename.c_str(), tmpfilename2.c_str());
-						if(res != 0){ // preco je chyba??
-							//TODO spinavy hack(ak sa nepodarilo presunut tak subor je zmazany)
-							continue;
-							/*cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
-								//posunut vsetko naspat? 
-							exit(1);*/
-						}
-						tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur
-					}
-					
-
-					//odstranenie pomocnych suborov 
-					if(remove("reset.txt")!=0){
-						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
-					}
-					if(remove("info.txt")!=0){
-						cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
-					}
-					if(remove("deleted.txt")!=0){
-						cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
-					}
-
-
-
-					//odstranit vsetko ine z cur
-					DIR * dir;
-					struct dirent *file;
-					string tmpdir = tmppath + "/Maildir/cur";//ak reset prazdny? nemoze byt prazdny!!!
-					string tmpfilename;
-					if((dir = opendir(tmpdir.c_str())) != NULL){
-						while((file = readdir(dir)) != NULL){
-							if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
-								continue;
-							}
-							tmpfilename = tmpdir + "/"+ file->d_name;
-							if(remove(tmpfilename.c_str())!=0){
-								cerr << "Chyba pri mazani suboru z cur." << endl;
-							}
-						}
-						closedir(dir);
-					}
-					else{//problem s cur priecinkom, ukoncime program
-						cerr << "Chyba pri otvarani priecinku cur" << endl;
-						exit(1);
-					}
-				
-					resetIn.close();
-				}
-
-				
-				exit(0);
-			}
-
-			//klasicky rezim, kontrola povinnych parametrov a detekcia volitelnych a nepodporovanych
-			else{
-				//flagy pre getopt
-				bool a = false;
-				bool d = false;
-				bool p = false;
-				opterr = 0;
-				int c;
-				char* ptr = NULL; 
-				//getopt pre spracovanie argumentov
-				while((c=getopt(argc,argv,"a:d:p:cr")) != -1){
-					switch (c){
-						case 'a':
-							a = true;
-							authfile1 = string(optarg);
-							break;
-						case 'd':
-							d = true;
-							maildir1 = string(optarg);
-							break;
-						case 'p':
-								p = true;
-								//prevod retazca portu na cislo
-								port1 = strtol(optarg,&ptr,10);
-								break;
-						case 'c':
-							crypt1 = true;
-							break;
-						case 'r':
-							reset1 = true;
-							break;
-						case '?':
-							cerr << "Nespravne parametre. \nPre informacie o spusteni spustite program s prepinacom -h."<<endl;
-							exit(1);
-						default: 
-							abort();
-					}
-				}
-				//kontrola ci boli zadane povinne parametre
-				if(!(a && d && p)){
-					cerr << "Nespravne parametre. \nMusite zadat cislo portu, cestu k Maildir a autentifikacny subor.\nPre informacie o spusteni spustite program s prepinacom -h."<<endl;
-					exit(1);
-				}
-				//kontrola spravneho portu
-				if(*ptr != '\0'){
-					cerr << "Chyba. Port obsahuje znak, moze obsahovat iba cisla!!!"<<endl;
-					exit(1); 
-				}
-			}
-		}
-		
-};
 
 //kontrola ci string je platne cislo
 bool isnumber(string number){
@@ -386,6 +195,62 @@ bool checkMaildir(struct threadVar args){
     return true;
 }
 
+void readAuthFile(string& username, string& password,arguments args){
+//nacitanie autentifikacneho suboru --TODO do funkcie
+    FILE *f;
+    f = fopen(args.authfile().c_str(),"r");
+    if(f == NULL){
+    	cerr << "Nespravny autentifikacny subor." << endl;
+    	pthread_mutex_destroy(&mailMutex);
+    	exit(1); 
+    }
+    int ch;
+    string tmpString="";
+    int counter = 0;
+	while ((ch = fgetc(f))  != EOF){
+		counter++;
+		tmpString += ch;
+		if(counter == 11){//ak sa nacital 11. znak(tj. nasical sme string "username = ")
+			if(tmpString == "username = "){//nacitali sme string username
+				while((ch = fgetc(f)) != '\n'){//do konca riadku nacitame prihlasovacie meno
+					username += ch;
+				}
+				tmpString = "";
+			}
+			else{
+				cerr << "Invalidny autentifikacny subor" << endl;
+				pthread_mutex_destroy(&mailMutex);
+				exit(1);
+			}
+		}
+		else if(counter == 22){
+			if(tmpString == "password = "){
+				while((ch = fgetc(f)) != EOF){//do konca riadku nacitame prihlasovacie meno
+					password += ch;
+				}
+				tmpString = "";
+				break;
+
+			}
+			else{
+				cerr << "Invalidny autentifikacny subor" << endl;
+				pthread_mutex_destroy(&mailMutex);
+				exit(1);
+			}
+		}
+		else if(counter > 22){//okrem "username = " a "password = " je tam aj nieco ine
+			cerr << "Invalidny autentifikacny subor" << endl;
+			pthread_mutex_destroy(&mailMutex);
+			exit(1);
+		}
+		else{
+			continue;
+		}
+	}
+
+    fclose(f);
+}
+
 //funkcia pre vlakna==klienty
 void* doSth(void *arg){
 	
@@ -431,7 +296,7 @@ void* doSth(void *arg){
   	list<char*> tmpdel_list;
 
   	//vector pre subory v current - kvoli cislovanie mailov  pridanie suborov v cur do vectoru,osetrit ci sa da otvorit cur??
-  	vector<string> geciszopokurva;
+  	vector<string> mailnums;
   	
 
   	string username;//pre kontrolu username v apop a pass
@@ -555,14 +420,14 @@ void* doSth(void *arg){
 
   									//ak maildir ok aj heslo ok tak posleme kladnu odpoved
   									send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
-  									if(!mailMutex.try_lock()){//kontrola ci je maildir obsadenyy
+  									if(pthread_mutex_trylock(&mailMutex)){//kontrola ci je maildir obsadenyy
   										send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
   										close(acceptSocket);//odpojime klienta, alebo neodpajat????
   										threadcount--;
   										return(NULL);
   									}
 
-  									getFilesInCur(geciszopokurva,vars.maildir);//ziskame subory z current ktore su uz tam
+  									getFilesInCur(mailnums,vars.maildir);//ziskame subory z current ktore su uz tam
 
 
   									bool firstRun = true;//kontrola prveho spustenia
@@ -598,15 +463,17 @@ void* doSth(void *arg){
 											tmpfilename1 = tmpdir + "/"+ file->d_name;
 											tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
 											if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
+												cout << tmpfilename1 << endl;
+												cout << tmpfilename2<< endl;
 												cerr << "chyba pri premenovani(presune) z new do cur" << endl;
 												close(acceptSocket);
-			  									mailMutex.unlock();
+			  									pthread_mutex_unlock(&mailMutex);
 			  									//posunut vsetko naspat? 
 												exit(1);
 											}
 
 											//pridame nazov noveho suboru do vectoru mien
-											geciszopokurva.push_back(string(file->d_name));
+											mailnums.push_back(string(file->d_name));
 											//pridanie nazvu a uidl do pomocneho suboru  
 											infoFile <<file->d_name;
 											infoFile << "/";
@@ -632,7 +499,7 @@ void* doSth(void *arg){
 									else{//problem s new priecinkom, ukoncime program
 										cerr << "chyba pri otvarani priecinku cur" << endl;
 										close(acceptSocket);
-			  							mailMutex.unlock();
+			  							pthread_mutex_unlock(&mailMutex);
 			  							threadcount--;
 										exit(1);
 									}	//presun do dalsieho stavu
@@ -675,14 +542,14 @@ void* doSth(void *arg){
   								}
 
   								send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
-								if(!mailMutex.try_lock()){
+								if(pthread_mutex_trylock(&mailMutex) != 0){
 									send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
 									close(acceptSocket);//odpojime klienta, alebo neodpajat????
 									threadcount--;
 									return(NULL);
 								}
 
-								getFilesInCur(geciszopokurva,vars.maildir);//ziskame subory v current, preto tu lebo iba teraz mozeme pristupovat k maildiru
+								getFilesInCur(mailnums,vars.maildir);//ziskame subory v current, preto tu lebo iba teraz mozeme pristupovat k maildiru
 
 
 								bool firstRun = true;//kontrola prveho spustenia
@@ -718,15 +585,15 @@ void* doSth(void *arg){
 										tmpfilename1 = tmpdir + "/"+ file->d_name;
 										tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
 										if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
-											cerr << "chyba pri premenovani(prsune) z new do cur" << endl;
+											cerr << "chyba pri premenovani(presune) z new do cur" << endl;
 											close(acceptSocket);
-		  									mailMutex.unlock();
+		  									pthread_mutex_unlock(&mailMutex);
 		  									//posunut vsetko naspat? 
 											exit(1);
 										}
 
 										//pridame nazov suboru do vectoru mien
-										geciszopokurva.push_back(string(file->d_name));
+										mailnums.push_back(string(file->d_name));
 										//pridanie nazvu a uidl do pomocneho suboru  
 										infoFile <<file->d_name;
 										infoFile << "/";
@@ -750,7 +617,7 @@ void* doSth(void *arg){
 								else{//problem s new priecinkom, ukoncime program
 									cerr << "chyba pri otvarani priecinku cur" << endl;
 									close(acceptSocket);
-		  							mailMutex.unlock();
+		  							pthread_mutex_unlock(&mailMutex);
 		  							threadcount--;
 									exit(1);
 								}	//presun do dalsieho stavu
@@ -767,13 +634,6 @@ void* doSth(void *arg){
   							}
   							break;
   							}
-  						case noop://nerob nic
-  							if(argument.compare("")){//noop neberie argumenty
-  								send(acceptSocket,"-ERR Noop does not take arguments\r\n",strlen("-ERR Noop does not take arguments\r\n"),0);
-								break;
-  							}
-  							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
-  							break;
   						case quit://udpojime klienta
   							if(argument.compare("")){//quit neberie argumenty
   								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
@@ -781,7 +641,7 @@ void* doSth(void *arg){
   							}
   							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
   							close(acceptSocket);
-  							mailMutex.unlock();
+  							pthread_mutex_unlock(&mailMutex);
   							threadcount--;
   							return(NULL);
   						default:
@@ -807,11 +667,11 @@ void* doSth(void *arg){
   								bool listOK = true;//flag
   								int sizesum = 0;//pocet bajtov
    								if((d = opendir(tmpdir.c_str())) != NULL){									
-   									while(msgcnt < (int)geciszopokurva.size()){//prejdeme vsetky subory ktore sa nachadzaju v current
+   									while(msgcnt < (int)mailnums.size()){//prejdeme vsetky subory ktore sa nachadzaju v current
 										
 										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-										    if(!geciszopokurva[msgcnt].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    if(!mailnums[msgcnt].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
 												listOK = false;
 												break;
 										    }
@@ -831,7 +691,7 @@ void* doSth(void *arg){
 													break;
 												}
 												sscanf(line.c_str(),"%[^/]/%*[^/]/%d",filename,&tmpsize);//nacitame nazov a velkost suboru
-												if(!geciszopokurva[msgcnt].compare(filename)){//ak sme nasli subor 
+												if(!mailnums[msgcnt].compare(filename)){//ak sme nasli subor 
 													break; // v tmpsize mame velkost daneho suboru
 												}
 											}
@@ -854,7 +714,7 @@ void* doSth(void *arg){
 	  							else{//problem s cur priecinkom, ukoncime program
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
-	  								mailMutex.unlock();
+	  								pthread_mutex_unlock(&mailMutex);
 	  								threadcount--;
 	  								exit(1);
 	  							}	
@@ -872,7 +732,7 @@ void* doSth(void *arg){
   								bool listOK = true;
 
   								if((d = opendir(tmpdir.c_str())) != NULL){									
-									if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//kontrola intervalu 
+									if(msgnum >= (int)mailnums.size() || msgnum < 0){//kontrola intervalu 
 	  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
 										closedir(d);
 										break;
@@ -881,7 +741,7 @@ void* doSth(void *arg){
 
 										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-										    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
 										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
 												listOK = false;
 												break;
@@ -902,7 +762,7 @@ void* doSth(void *arg){
 													break;
 												}
 												sscanf(line.c_str(),"%[^/]/%*[^/]/%d",filename,&tmpsize);//nacitame nazov a velkost suboru
-												if(!geciszopokurva[msgnum].compare(filename)){//ak sme nasli subor 
+												if(!mailnums[msgnum].compare(filename)){//ak sme nasli subor 
 													break; // v tmpsize mame velkost daneho suboru
 												}
 											}
@@ -917,7 +777,7 @@ void* doSth(void *arg){
 	  							else{//problem s cur priecinkom, ukoncime program
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
-	  								mailMutex.unlock();
+	  								pthread_mutex_unlock(&mailMutex);
 	  								threadcount--;
 	  								exit(1);
 	  							}	
@@ -996,7 +856,7 @@ void* doSth(void *arg){
   							else{//problem s cur priecinkom, ukoncime program
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
-  								mailMutex.unlock();
+  								pthread_mutex_unlock(&mailMutex);
   								threadcount--;
   								exit(1);
   							}	
@@ -1025,18 +885,18 @@ void* doSth(void *arg){
   							bool retrOK = true;
   							if((d = opendir(tmpdir.c_str())) != NULL){
   								
-   								if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//osetrenie cisla mailu
+   								if(msgnum >= (int)mailnums.size() || msgnum < 0){//osetrenie cisla mailu
   									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
 									break;
   								}
 
   								else{
 
-  									tmpfilename = tmpdir + "/" + geciszopokurva[msgnum];
+  									tmpfilename = tmpdir + "/" + mailnums[msgnum];
 									//kontrola ci sprava bola mazana
 
 									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-									    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+									    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
 									   	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
 									    	retrOK = false;//flag pre oznacenie chyby 
 											break;
@@ -1056,7 +916,7 @@ void* doSth(void *arg){
 											break;
 										}
 										sscanf(line.c_str(),"%[^/]/%*[^/]/%d",filename,&filesize);//nacitame nazov a velkost suboru
-										if(!geciszopokurva[msgnum].compare(filename)){//ak sme nasli subor 
+										if(!mailnums[msgnum].compare(filename)){//ak sme nasli subor 
 											break; // v tmpsize mame velkost daneho suboru
 										}
 									}
@@ -1100,7 +960,7 @@ void* doSth(void *arg){
   							else{//problem s cur priecinkom, ukoncime program
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
-  								mailMutex.unlock();
+  								pthread_mutex_unlock(&mailMutex);
   								threadcount--;
   								exit(1);
   							}	
@@ -1123,7 +983,7 @@ void* doSth(void *arg){
   							msgnum -= 1;
   							string tmpdir = vars.maildir + "/cur";
   							if((d = opendir(tmpdir.c_str())) != NULL){
-								if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//kontrola intervalu 
+								if(msgnum >= (int)mailnums.size() || msgnum < 0){//kontrola intervalu 
   									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
 									closedir(d);
 									break;
@@ -1131,7 +991,7 @@ void* doSth(void *arg){
   								else{
 									//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-									    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+									    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
 									    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
 											delOK = false;
 											break;
@@ -1141,7 +1001,7 @@ void* doSth(void *arg){
 										
 									
 	  								if(delOK){//posleme ok ak bol subor oznaceny ako mazany(kvoli tomu aby tato hlaska sa neposielala pri chybe)
-	  									tmpdel_list.push_back((char*)geciszopokurva[msgnum].c_str());		
+	  									tmpdel_list.push_back((char*)mailnums[msgnum].c_str());		
 	  									string tmpAnsw = "+OK msg deleted\r\n";
 	  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
 	  								}
@@ -1152,7 +1012,7 @@ void* doSth(void *arg){
   							else{//problem s cur priecinkom, ukoncime program
   								cerr << "chyba pri otvarani priecinku cur" << endl;
   								close(acceptSocket);
-  								mailMutex.unlock();
+  								pthread_mutex_unlock(&mailMutex);
   								threadcount--;
   								exit(1);
   							}	
@@ -1172,11 +1032,11 @@ void* doSth(void *arg){
   								string tmpAnsw = "";
   								bool uidlOK = true;//flag
    								if((d = opendir(tmpdir.c_str())) != NULL){									
-   									while(msgcnt < (int)geciszopokurva.size()){//prejdeme vsetky subory ktore sa nachadzaju v current
+   									while(msgcnt < (int)mailnums.size()){//prejdeme vsetky subory ktore sa nachadzaju v current
 										
 										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-										    if(!geciszopokurva[msgcnt].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    if(!mailnums[msgcnt].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
 												uidlOK = false;
 												break;
 										    }
@@ -1195,7 +1055,7 @@ void* doSth(void *arg){
 													break;
 												}
 												sscanf(line.c_str(),"%[^/]/%[^/]/%*d",filename,uidl);//nacitame nazov a velkost suboru
-												if(!geciszopokurva[msgcnt].compare(filename)){//ak sme nasli subor 
+												if(!mailnums[msgcnt].compare(filename)){//ak sme nasli subor 
 													break; // v uidl mame uidl
 												}
 											}
@@ -1216,7 +1076,7 @@ void* doSth(void *arg){
 	  							else{//problem s cur priecinkom, ukoncime program
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
-	  								mailMutex.unlock();
+	  								pthread_mutex_unlock(&mailMutex);
 	  								threadcount--;
 	  								exit(1);
 	  							}	
@@ -1234,7 +1094,7 @@ void* doSth(void *arg){
   								bool deleOK = true;
 
   								if((d = opendir(tmpdir.c_str())) != NULL){									
-									if(msgnum >= (int)geciszopokurva.size() || msgnum < 0){//kontrola intervalu 
+									if(msgnum >= (int)mailnums.size() || msgnum < 0){//kontrola intervalu 
 	  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
 										closedir(d);
 										break;
@@ -1243,7 +1103,7 @@ void* doSth(void *arg){
 
 										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
-										    if(!geciszopokurva[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
+										    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
 										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
 												deleOK = false;
 												break;
@@ -1264,7 +1124,7 @@ void* doSth(void *arg){
 													break;
 												}
 												sscanf(line.c_str(),"%[^/]/%[^/]/%*d",filename,uidl);//nacitame nazov a velkost suboru
-												if(!geciszopokurva[msgnum].compare(filename)){//ak sme nasli subor 
+												if(!mailnums[msgnum].compare(filename)){//ak sme nasli subor 
 													break; // v tmpsize mame velkost daneho suboru
 												}
 											}
@@ -1279,7 +1139,7 @@ void* doSth(void *arg){
 	  							else{//problem s cur priecinkom, ukoncime program
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
-	  								mailMutex.unlock();
+	  								pthread_mutex_unlock(&mailMutex);
 	  								exit(1);
 	  							}	
   							}
@@ -1315,7 +1175,7 @@ void* doSth(void *arg){
 					}
 					deleted.close();
 					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
-					mailMutex.unlock();
+					pthread_mutex_unlock(&mailMutex);
 					threadcount--;
 					return(NULL);
 					break;	
@@ -1330,7 +1190,7 @@ void* doSth(void *arg){
         else if (res == 0) //ak sa klient odpoji -> odznacit subory na delete,odomknut zamok
         { 
             printf("Client disconnected\n");
-            mailMutex.unlock();						
+            pthread_mutex_unlock(&mailMutex);					
 			break;
         }
         else if (errno == EAGAIN) // == EWOULDBLOCK
@@ -1342,7 +1202,7 @@ void* doSth(void *arg){
             if(tmptime >= 600){//ak preslo 10 minut
             	send(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"),0);
 				close(acceptSocket);
-				mailMutex.unlock();//?????? TODO
+				pthread_mutex_unlock(&mailMutex);//?????? TODO
 				threadcount--;
     			return (NULL);
             }
@@ -1350,14 +1210,14 @@ void* doSth(void *arg){
         }
         else//ak chyba
         {
-        	mailMutex.unlock();	
+        	pthread_mutex_unlock(&mailMutex);
             cerr << "ERROR: recv" << endl;
             continue;
             //exit(EXIT_FAILURE);
         }
     }
     //ukonci sa thread
-    mailMutex.unlock();//TODOT
+    pthread_mutex_unlock(&mailMutex);//TODO
     close(acceptSocket);
     threadcount--;
     cout << to_string(threadcount) << endl;
@@ -1378,7 +1238,7 @@ void signalHandler(int x)
 
 int main(int argc, char **argv){
     //vytvorenie objektu pre spracovanie argumentov
-    Arguments args;
+    arguments args;
     //kontrola parametrov
     args.parseArgs(argc,argv);
 
@@ -1388,57 +1248,8 @@ int main(int argc, char **argv){
     tmp.password = "";
 
 
-
-    //nacitanie autentifikacneho suboru --TODO do funkcie
-    FILE *f;
-    f = fopen(args.authfile().c_str(),"r");
-    if(f == NULL){
-    	cerr << "Nespravny autentifikacny subor." << endl;
-    	exit(1); 
-    }
-    int ch;
-    string tmpString="";
-    int counter = 0;
-	while ((ch = fgetc(f))  != EOF){
-		counter++;
-		tmpString += ch;
-		if(counter == 11){//ak sa nacital 11. znak(tj. nasical sme string "username = ")
-			if(tmpString == "username = "){//nacitali sme string username
-				while((ch = fgetc(f)) != '\n'){//do konca riadku nacitame prihlasovacie meno
-					tmp.username += ch;
-				}
-				tmpString = "";
-			}
-			else{
-				cerr << "Invalidny autentifikacny subor" << endl;
-				exit(1);
-			}
-		}
-		else if(counter == 22){
-			if(tmpString == "password = "){
-				while((ch = fgetc(f)) != EOF){//do konca riadku nacitame prihlasovacie meno
-					tmp.password += ch;
-				}
-				tmpString = "";
-				break;
-
-			}
-			else{
-				cerr << "Invalidny autentifikacny subor" << endl;
-				exit(1);
-			}
-		}
-		else if(counter > 22){//okrem "username = " a "password = " je tam aj nieco ine
-			cerr << "Invalidny autentifikacny subor" << endl;
-			exit(1);
-		}
-		else{
-			continue;
-		}
-	}
-
-    fclose(f);
-
+    //nacitanie username a password
+    readAuthFile(tmp.username,tmp.password,args);
 
     //pridanie maildiru do struktury pre funkciu vlakna
     tmp.maildir = args.maildir();
@@ -1504,6 +1315,7 @@ int main(int argc, char **argv){
 			}
 			else{//problem s cur priecinkom, ukoncime program
 				cerr << "chyba pri otvarani priecinku cur" << endl;
+				pthread_mutex_destroy(&mailMutex);
 				exit(1);
 			}	
 		}
@@ -1539,18 +1351,21 @@ int main(int argc, char **argv){
     //cakanie na klientov
     if ((listenSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0){
 		cerr << "Chyba pri vytvarani socketu." << endl;
+		pthread_mutex_destroy(&mailMutex);
 		exit(1);
     }
 
     //bind - priradenie adresy pre socket
 	if (bind(listenSocket, (struct sockaddr *)&server, sizeof(server)) < 0){
 		cerr << "Chyba pri bindovani socketu." << endl;
+		pthread_mutex_destroy(&mailMutex);
 		exit(1);
 	}    
 
 	//cakanie na pripojenia
 	if (listen(listenSocket, QUEUE) < 0){
 		cerr << "Chyba pri nastaveni socketu na pasivny(funkcia listen())." << endl;
+		pthread_mutex_destroy(&mailMutex);
 		exit(1);
 	}
 
@@ -1558,6 +1373,7 @@ int main(int argc, char **argv){
 	int flags = fcntl(listenSocket, F_GETFL, 0);
 	if ((fcntl(listenSocket, F_SETFL, flags | O_NONBLOCK))<0){
 		cerr << "Chyba pri nastaveni listen socketu na neblokujuci." << endl;
+		pthread_mutex_destroy(&mailMutex);
 		exit(1);							
 	}
 	
@@ -1613,6 +1429,8 @@ int main(int argc, char **argv){
 	close(listenSocket);
 
 	while(threadcount);//cakame kym sa kazde vlano ukonci
+
+	pthread_mutex_destroy(&mailMutex);
 
     exit(0);
 }
