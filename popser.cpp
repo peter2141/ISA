@@ -251,6 +251,21 @@ void readAuthFile(string& username, string& password,arguments args){
     fclose(f);
 }
 
+
+bool mySend(int socket,const char *msg,size_t msgsize){
+	int ret;
+	ret = send(socket,msg,msgsize,0);
+	if(ret < 0){
+		cerr << "Chyba pri posielani(funkcia sen = mySend). Odpajam klienta." << endl;
+		pthread_mutex_unlock(&mailMutex);
+		close(socket);
+		return false;
+	}
+	else{
+		return true;
+	}
+}
+
 //funkcia pre vlakna==klienty
 void* doSth(void *arg){
 	
@@ -260,6 +275,8 @@ void* doSth(void *arg){
 	
 	threadVar vars;
 	vars = *((threadVar*)arg);
+
+	bool sen; //pre kontrolu sen = mySend	
 
 	//lokalna premenna pre socket
 	int acceptSocket;
@@ -275,7 +292,11 @@ void* doSth(void *arg){
 
 
 	//poslanie uvitacej spravy
-	send(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()),0);
+	sen = mySend(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()));
+	if(!sen){
+		//ukoncim thread ak chyba
+		return(NULL);
+	}
 
 	//vypocitanie hashu
 	string stringToHash = welcomeMsg + vars.password;
@@ -312,9 +333,9 @@ void* doSth(void *arg){
 	{		
 
 
+
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
-		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF
-		int sen; //pre kontrolu send		
+		int res = recv(acceptSocket, buff, BUFSIZE,0);//poziadavok ma max dlzku 255 bajtov spolu s CRLF	
 		if (res > 0)
 		{
 			timestamp = 0;//vynulujeme casovac ak 
@@ -324,7 +345,11 @@ void* doSth(void *arg){
 
 			//kontrola dlzky spravy ????? aka max dlzka???
 			if(message.size()>255){
-				send(acceptSocket,"-ERR Too long command\r\n",strlen("-ERR Too long command\r\n"),0);
+				sen = mySend(acceptSocket,"-ERR Too long command\r\n",strlen("-ERR Too long command\r\n"));
+				if(!sen){
+					//ukoncim thread ak chyba
+					return(NULL);
+				}
 				continue;
 			}
 
@@ -337,14 +362,22 @@ void* doSth(void *arg){
 			}
 
 			if(message.size()<2){
-				send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+				sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+				if(!sen){
+					//ukoncim thread ak chyba
+					return(NULL);
+				}
 				continue;
 			}
 
 
 			//kontrola CRLF na konci
 			if((message.find("\r\n")) != message.size()-2){
-				send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+				sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+				if(!sen){
+					//ukoncim thread ak chyba
+					return(NULL);
+				}
 				continue;
 			}
 
@@ -396,14 +429,22 @@ void* doSth(void *arg){
   						case user://prisiel prikaz user
 							if(vars.crypt){//bol zadany parameter -c, USER after USER moze byt
 
-								send(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"),0);
+								sen = mySend(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								username = argument;
 								userOK = true;
 								break;
 
 							}
 							else{//nebola povolena autentifikacia USER - PASS
-								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+								sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
 							}
   							break;
@@ -412,16 +453,28 @@ void* doSth(void *arg){
   								if(vars.password.compare(argument) == 0 && vars.username.compare(username) == 0){//dobre heslo a meno
   									//najpr skontrolujeme maildir
   									if(!checkMaildir(vars)){
-  										send(acceptSocket,"-ERR problem with maildir.\r\n",strlen("-ERR problem with maildir.\r\n"),0);
+  										sen = mySend(acceptSocket,"-ERR problem with maildir.\r\n",strlen("-ERR problem with maildir.\r\n"));
+  										if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
   										close(acceptSocket);
   										threadcount--;
   										return(NULL);
   									}
 
   									//ak maildir ok aj heslo ok tak posleme kladnu odpoved
-  									send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
+  									sen = mySend(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
   									if(pthread_mutex_trylock(&mailMutex)){//kontrola ci je maildir obsadenyy
-  										send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
+  										sen = mySend(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"));
+  										if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
   										close(acceptSocket);//odpojime klienta, alebo neodpajat????
   										threadcount--;
   										return(NULL);
@@ -512,13 +565,21 @@ void* doSth(void *arg){
   								}
 
   								else{//zle heslo
-  									send(acceptSocket,"-ERR Wrong username or password\r\n",strlen("-ERR Wrong username or password\r\n"),0);
+  									sen = mySend(acceptSocket,"-ERR Wrong username or password\r\n",strlen("-ERR Wrong username or password\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
   									userOK = false;
   									break;
   								}
   							}//PASS mozno zadat iba pos spravnom USER
   							else{
-  								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+  								sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
   							}
 
@@ -527,7 +588,11 @@ void* doSth(void *arg){
   						case apop:{
   							//porovnat s hashom
   							if(vars.crypt){//ak sa zada parameter -c moze sa pouzivat ibsa kombinacia USER a PASS
-  								send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+  								sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+				  				if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
   							}
   							//pridanie username k hashu
@@ -535,15 +600,27 @@ void* doSth(void *arg){
   							if(hash.compare(apopstr) == 0){
 								//kontrola maildiru
 								if(!checkMaildir(vars)){
-  										send(acceptSocket,"-ERR problem with maildir.\r\n",strlen("-ERR problem with maildir.\r\n"),0);
+  										sen = mySend(acceptSocket,"-ERR problem with maildir.\r\n",strlen("-ERR problem with maildir.\r\n"));
+  										if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
   										close(acceptSocket);
   										threadcount--;
   										return(NULL);
   								}
 
-  								send(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"),0);
+  								sen = mySend(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								if(pthread_mutex_trylock(&mailMutex) != 0){
-									send(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"),0);
+									sen = mySend(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"));
+									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
 									close(acceptSocket);//odpojime klienta, alebo neodpajat????
 									threadcount--;
 									return(NULL);
@@ -629,23 +706,39 @@ void* doSth(void *arg){
 								break;
   							}
   							else{
-  								send(acceptSocket,"-ERR Wrong MD5 hash\r\n",strlen("-ERR Wrong MD5 hash\r\n"),0);
+  								sen = mySend(acceptSocket,"-ERR Wrong MD5 hash\r\n",strlen("-ERR Wrong MD5 hash\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
   								break;
   							}
   							break;
   							}
   						case quit://udpojime klienta
   							if(argument.compare("")){//quit neberie argumenty
-  								send(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"),0);
+  								sen = mySend(acceptSocket,"-ERR Quit does not take arguments\r\n",strlen("-ERR Quit does not take arguments\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
   							}
-  							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
+  							sen = mySend(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"));
+  							if(!sen){
+								//ukoncim thread ak chyba
+								return(NULL);
+							}
   							close(acceptSocket);
   							pthread_mutex_unlock(&mailMutex);
   							threadcount--;
   							return(NULL);
   						default:
-  							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+  							sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+  							if(!sen){
+								//ukoncim thread ak chyba
+								return(NULL);
+							}
 							break;
   					}
   					break;
@@ -708,7 +801,11 @@ void* doSth(void *arg){
 		  							answ = "+OK " + to_string(msgsen) + " messages (" + to_string(sizesum) + " octets)\r\n";//prvy riadok odpovede
 		  							tmpAnsw.append(".\r\n");//ukoncenie spravy
 		  							answ.append(tmpAnsw);//spojenie 1. riadku a tela
-		  							send(acceptSocket,answ.c_str(),strlen(answ.c_str()),0);//odosielanie
+		  							sen = mySend(acceptSocket,answ.c_str(),strlen(answ.c_str()));//odosielanie
+		  							if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
   									closedir(d);
 	  							}
 	  							else{//problem s cur priecinkom, ukoncime program
@@ -722,7 +819,11 @@ void* doSth(void *arg){
   							else{//bol zadany argument
   								//kontrola ci argument je cislo
   								if(!isnumber(argument)){
-  									send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+  									sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
   									break;
   								}
   								int msgnum = stoi(argument,nullptr,10);
@@ -733,7 +834,11 @@ void* doSth(void *arg){
 
   								if((d = opendir(tmpdir.c_str())) != NULL){									
 									if(msgnum >= (int)mailnums.size() || msgnum < 0){//kontrola intervalu 
-	  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+	  									sen = mySend(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"));
+	  									if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
 										closedir(d);
 										break;
 	  								}
@@ -742,7 +847,11 @@ void* doSth(void *arg){
 										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
 										    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
-										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+										    	sen = mySend(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"));
+										    	if(!sen){
+													//ukoncim thread ak chyba
+													return(NULL);
+												}
 												listOK = false;
 												break;
 										    }
@@ -768,7 +877,11 @@ void* doSth(void *arg){
 											}
 	  										file.close();
 		  									string tmpAnsw = "+OK " + to_string(++msgnum)+ " " + to_string(tmpsize) + "\r\n";
-		  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+		  									sen = mySend(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()));
+		  									if(!sen){
+												//ukoncim thread ak chyba
+												return(NULL);
+											}
 		  								}
 	  								}
 
@@ -848,7 +961,11 @@ void* doSth(void *arg){
 								file.close();
 								closedir(d);
 								string tmpAnsw = "+OK " + to_string(count) + " " + to_string(totalsize) + "\r\n";
-  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+  								sen = mySend(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
 
   							}
@@ -866,12 +983,20 @@ void* doSth(void *arg){
   						case retr:{
   							//retr ma povinny argument cislo spravy
   							if(!argument.compare("")){//retr ma povinny argument
-  								send(acceptSocket,"-ERR Retr need message number\r\n",strlen("-ERR Retr need message number\r\n"),0);
+  								sen = mySend(acceptSocket,"-ERR Retr need message number\r\n",strlen("-ERR Retr need message number\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
   							}
   							//kontrola ci argument je cislo
 							if(!isnumber(argument)){
-								send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+								sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
 							}
   							DIR *d = NULL;
@@ -886,7 +1011,11 @@ void* doSth(void *arg){
   							if((d = opendir(tmpdir.c_str())) != NULL){
   								
    								if(msgnum >= (int)mailnums.size() || msgnum < 0){//osetrenie cisla mailu
-  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+  									sen = mySend(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
 									break;
   								}
 
@@ -897,8 +1026,12 @@ void* doSth(void *arg){
 
 									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
 									    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
-									   	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
-									    	retrOK = false;//flag pre oznacenie chyby 
+										   	sen = mySend(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"));
+										   	if(!sen){
+												//ukoncim thread ak chyba
+												return(NULL);
+											}
+										    retrOK = false;//flag pre oznacenie chyby 
 											break;
 									    }
 									}
@@ -950,7 +1083,11 @@ void* doSth(void *arg){
 	  								
 	  								if(retrOK){//ak vsetko prebehlo v poriadku
 	  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + ".\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
-			  								send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+			  								sen = mySend(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()));
+			  								if(!sen){
+												//ukoncim thread ak chyba
+												return(NULL);
+											}
 											break;
   									}
   								}
@@ -969,12 +1106,20 @@ void* doSth(void *arg){
 
   						case dele:{
   							if(!argument.compare("")){//dele ma povinny argument
-  								send(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"),0);
+  								sen = mySend(acceptSocket,"-ERR Enter message number you want to delete\r\n",strlen("-ERR Enter message number you want to delete\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
   							}
   							//kontrola ci argument je cislo
 							if(!isnumber(argument)){
-								send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+								sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
 								break;
 							}
   							DIR *d = NULL;
@@ -984,7 +1129,11 @@ void* doSth(void *arg){
   							string tmpdir = vars.maildir + "/cur";
   							if((d = opendir(tmpdir.c_str())) != NULL){
 								if(msgnum >= (int)mailnums.size() || msgnum < 0){//kontrola intervalu 
-  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+  									sen = mySend(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
 									closedir(d);
 									break;
   								}
@@ -992,7 +1141,11 @@ void* doSth(void *arg){
 									//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 									for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
 									    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
-									    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+									    	sen = mySend(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"));
+									    	if(!sen){
+												//ukoncim thread ak chyba
+												return(NULL);
+											}
 											delOK = false;
 											break;
 									    }
@@ -1003,7 +1156,11 @@ void* doSth(void *arg){
 	  								if(delOK){//posleme ok ak bol subor oznaceny ako mazany(kvoli tomu aby tato hlaska sa neposielala pri chybe)
 	  									tmpdel_list.push_back((char*)mailnums[msgnum].c_str());		
 	  									string tmpAnsw = "+OK msg deleted\r\n";
-	  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+	  									sen = mySend(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()));
+	  									if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
 	  								}
   								}
 
@@ -1020,7 +1177,11 @@ void* doSth(void *arg){
   						}
   						case rset:
   							tmpdel_list.clear();
-  							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
+  							sen = mySend(acceptSocket,"+OK\r\n",strlen("+OK\r\n"));
+  							if(!sen){
+								//ukoncim thread ak chyba
+								return(NULL);
+							}
   							break;
   						case uidl:{//podobne k listu len vraciame ine veci
   							if(!argument.compare("")){//nebol zadany parameter, tj poslat informaciu o vsetkych spravach
@@ -1070,7 +1231,11 @@ void* doSth(void *arg){
 		  							answ = "+OK\r\n";
 		  							tmpAnsw.append(".\r\n");//ukoncenie spravy
 		  							answ.append(tmpAnsw);//spojenie 1. riadku a tela
-		  							send(acceptSocket,answ.c_str(),strlen(answ.c_str()),0);//odosielanie
+		  							sen = mySend(acceptSocket,answ.c_str(),strlen(answ.c_str()));//odosielanie
+		  							if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
   									closedir(d);
 	  							}
 	  							else{//problem s cur priecinkom, ukoncime program
@@ -1084,7 +1249,11 @@ void* doSth(void *arg){
   							else{//bol zadany argument
   								//kontrola ci argument je cislo
   								if(!isnumber(argument)){
-  									send(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"),0);
+  									sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
   									break;
   								}
   								int msgnum = stoi(argument,nullptr,10);
@@ -1095,7 +1264,11 @@ void* doSth(void *arg){
 
   								if((d = opendir(tmpdir.c_str())) != NULL){									
 									if(msgnum >= (int)mailnums.size() || msgnum < 0){//kontrola intervalu 
-	  									send(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"),0);
+	  									sen = mySend(acceptSocket,"-ERR Messege does not exists\r\n",strlen("-ERR Messege does not exists\r\n"));
+	  									if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
 										closedir(d);
 										break;
 	  								}
@@ -1104,7 +1277,11 @@ void* doSth(void *arg){
 										//iteracia cez list, kontrola ci uz dany subor bol oznaceny na mazanie
 										for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
 										    if(!mailnums[msgnum].compare(string(*iterator))){//ak vybrany mail bol uz oznaceny na mazanie chyba
-										    	send(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"),0);
+										    	sen = mySend(acceptSocket,"-ERR Messege already deleted\r\n",strlen("-ERR Messege already deleted\r\n"));
+										    	if(!sen){
+													//ukoncim thread ak chyba
+													return(NULL);
+												}
 												deleOK = false;
 												break;
 										    }
@@ -1130,7 +1307,11 @@ void* doSth(void *arg){
 											}
 	  										file.close();
 		  									string tmpAnsw = "+OK " + to_string(++msgnum) + " " + string(uidl) + "\r\n";
-		  									send(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()),0);
+		  									sen = mySend(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()));
+		  									if(!sen){
+												//ukoncim thread ak chyba
+												return(NULL);
+											}
 		  								}
 	  								}
 
@@ -1146,14 +1327,26 @@ void* doSth(void *arg){
   							break;
   						}
   						case noop://nerob nic
-  							send(acceptSocket,"+OK\r\n",strlen("+OK\r\n"),0);
+  							sen = mySend(acceptSocket,"+OK\r\n",strlen("+OK\r\n"));
+  							if(!sen){
+								//ukoncim thread ak chyba
+								return(NULL);
+							}
   							break;
   						case quit: 
-  							send(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"),0);
+  							sen = mySend(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"));
+  							if(!sen){
+								//ukoncim thread ak chyba
+								return(NULL);
+							}
   							state = "update";
   							break;
   						default:
-  							send(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"),0);
+  							sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
+  							if(!sen){
+								//ukoncim thread ak chyba
+								return(NULL);
+							}
 							break;
   					}
   					if(state.compare("update")){
@@ -1200,7 +1393,11 @@ void* doSth(void *arg){
         	}
         	long int tmptime = (long int)time(NULL) - timestamp; //pozrieme rozdiel casu
             if(tmptime >= 600){//ak preslo 10 minut
-            	send(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"),0);
+            	sen = mySend(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"));
+            	if(!sen){
+					//ukoncim thread ak chyba
+					return(NULL);
+				}
 				close(acceptSocket);
 				pthread_mutex_unlock(&mailMutex);//?????? TODO
 				threadcount--;
