@@ -255,6 +255,7 @@ void readAuthFile(string& username, string& password,arguments args){
 bool mySend(int socket,const char *msg,size_t msgsize){
 	int ret;
 	ret = send(socket,msg,msgsize,0);
+	cout << ret << endl;
 	if(ret < 0){
 		cerr << "Chyba pri posielani(funkcia sen = mySend). Odpajam klienta." << endl;
 		pthread_mutex_unlock(&mailMutex);
@@ -1061,7 +1062,23 @@ void* doSth(void *arg){
 									while(!f.eof()){
 										getline(f,tmpline);
 										if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
+											cout << "last line" << endl;
+											cout << tmpline << endl;
+												if(tmpline.size() > 0){//ak neni prazdny riadok
+													if(tmpline[0] == '.'){
+														tmpline.insert(0, 1, '.');
+													}
+													msg.append(tmpline);
+													if(tmpline[tmpline.length()-1] != '\r'){//ak riadok bol zakonceny iba s /n
+														msg += "\r\n";
+													}
+													else{//ak riadok bol nzakonceny s /r/n  tak pridame iba /n
+														msg += "\n";
+													}
+													
+												}
 											break;
+											//break;
 										}
 										//kontrola ci je na zaciatku riadku bodka, ak ano tak pridame dalsie(byte-stuff)
 										if(tmpline[0] == '.'){
@@ -1084,6 +1101,7 @@ void* doSth(void *arg){
 	  								if(retrOK){//ak vsetko prebehlo v poriadku
 	  									  	string tmpAnsw = "+OK " + to_string(filesize) + " octets\r\n" + msg + ".\r\n"; //osetrit ten koniec, podla IMF, preksumat imf TODO
 			  								sen = mySend(acceptSocket,tmpAnsw.c_str(),strlen(tmpAnsw.c_str()));
+			  						
 			  								if(!sen){
 												//ukoncim thread ak chyba
 												return(NULL);
@@ -1471,9 +1489,9 @@ int main(int argc, char **argv){
 				if(stat(filename.c_str(), &buffer) != 0){
 					continue;
 				}
-				size_t pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
+				size_t pos = filename.rfind("/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
 				string tmpfilename2 = filename;
-				tmpfilename2.replace(pos,13,"/Maildir/new/");
+				tmpfilename2.replace(pos,5,"/new/");
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
 				if(res != 0){ // preco je chyba??
@@ -1554,6 +1572,13 @@ int main(int argc, char **argv){
     if ((listenSocket = socket(AF_INET, SOCK_STREAM, 0)) < 0){
 		cerr << "Chyba pri vytvarani socketu." << endl;
 		pthread_mutex_destroy(&mailMutex);
+		exit(1);
+    }
+
+    int optval = 1;
+    if((setsockopt(listenSocket,SOL_SOCKET,SO_REUSEADDR,&optval,sizeof(int))) < 0){
+    	cerr << "Chyba pri setsockopt reuseaddr" << endl;
+    	pthread_mutex_destroy(&mailMutex);
 		exit(1);
     }
 

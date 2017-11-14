@@ -67,9 +67,9 @@ void arguments::parseArgs(int argc, char **argv){
 				tmppath = filename;
 
 				//prepis absolutnej cesty s /cur na /new
-				pos = filename.rfind("/Maildir/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
+				pos = filename.rfind("/cur/");//hladame posledny vyskyt cur--treba osetrovat vobec?
 				string tmpfilename2 = filename;
-				tmpfilename2.replace(pos,13,"/Maildir/new/");
+				tmpfilename2.replace(pos,5,"/new/");
 				//presun suborov z cur do new
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				if(res != 0){ // preco je chyba??
@@ -99,7 +99,7 @@ void arguments::parseArgs(int argc, char **argv){
 			//odstranit vsetko ine z cur
 			DIR * dir;
 			struct dirent *file;
-			string tmpdir = tmppath + "/Maildir/cur";//ak reset prazdny? nemoze byt prazdny!!!
+			string tmpdir = tmppath + "/cur";//ak reset prazdny? nemoze byt prazdny!!!
 			string tmpfilename;
 			if((dir = opendir(tmpdir.c_str())) != NULL){
 				while((file = readdir(dir)) != NULL){
