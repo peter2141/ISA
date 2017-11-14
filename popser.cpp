@@ -253,18 +253,41 @@ void readAuthFile(string& username, string& password,arguments args){
 
 
 bool mySend(int socket,const char *msg,size_t msgsize){
+	cout << msgsize << endl;
+
+
 	int ret;
-	ret = send(socket,msg,msgsize,0);
-	cout << ret << endl;
-	if(ret < 0){
-		cerr << "Chyba pri posielani(funkcia sen = mySend). Odpajam klienta." << endl;
-		pthread_mutex_unlock(&mailMutex);
-		close(socket);
-		return false;
+	int size=0;
+	string message = msg ;
+	while(size != (int)msgsize && geci==0){
+
+		ret = send(socket,message.c_str(),message.size(),0);
+		if(ret > 0){
+				message.erase(0,ret);
+				size += ret;
+				//sleep(1);
+		}
+
+
+		else if(errno == EAGAIN){
+			continue;
+		}
+
+		else{
+			cerr << "Chyba pri posielani(funkcia sen = mySend). Odpajam klienta." << endl;
+			pthread_mutex_unlock(&mailMutex);
+			threadcount--;
+			close(socket);
+			return false;
+		}
+
+		cout << ret << endl;
+
 	}
-	else{
-		return true;
-	}
+	cout << msgsize << endl;
+	cout << size << endl;
+	return true;
+
 }
 
 //funkcia pre vlakna==klienty
