@@ -197,7 +197,7 @@ bool checkMaildir(struct threadVar args){
 
 void readAuthFile(string& username, string& password,arguments args){
 //nacitanie autentifikacneho suboru --TODO do funkcie
-    FILE *f;
+    FILE *f = NULL;
     f = fopen(args.authfile().c_str(),"r");
     if(f == NULL){
     	cerr << "Nespravny autentifikacny subor." << endl;
@@ -220,6 +220,7 @@ void readAuthFile(string& username, string& password,arguments args){
 			else{
 				cerr << "Invalidny autentifikacny subor" << endl;
 				pthread_mutex_destroy(&mailMutex);
+				fclose(f);
 				exit(1);
 			}
 		}
@@ -235,12 +236,14 @@ void readAuthFile(string& username, string& password,arguments args){
 			else{
 				cerr << "Invalidny autentifikacny subor" << endl;
 				pthread_mutex_destroy(&mailMutex);
+				fclose(f);
 				exit(1);
 			}
 		}
 		else if(counter > 22){//okrem "username = " a "password = " je tam aj nieco ine
 			cerr << "Invalidny autentifikacny subor" << endl;
 			pthread_mutex_destroy(&mailMutex);
+			fclose(f);
 			exit(1);
 		}
 		else{
@@ -253,7 +256,6 @@ void readAuthFile(string& username, string& password,arguments args){
 
 
 bool mySend(int socket,const char *msg,size_t msgsize){
-	cout << msgsize << endl;
 
 
 	int ret;
@@ -265,7 +267,7 @@ bool mySend(int socket,const char *msg,size_t msgsize){
 		if(ret > 0){
 				message.erase(0,ret);
 				size += ret;
-				//sleep(1);
+
 		}
 
 
@@ -281,10 +283,7 @@ bool mySend(int socket,const char *msg,size_t msgsize){
 			return false;
 		}
 
-		cout << ret << endl;
-
 	}
-	cout << msgsize << endl;
 	cout << size << endl;
 	return true;
 
@@ -1080,13 +1079,14 @@ void* doSth(void *arg){
 									file.close();
 
 
-									ifstream f(tmpfilename.c_str());
+									ifstream f;
+									f.open(tmpfilename.c_str());
 									//nacitanie emailu
 									while(!f.eof()){
 										getline(f,tmpline);
 										if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
 											cout << "last line" << endl;
-											cout << tmpline << endl;
+											
 												if(tmpline.size() > 0){//ak neni prazdny riadok
 													if(tmpline[0] == '.'){
 														tmpline.insert(0, 1, '.');
@@ -1129,6 +1129,7 @@ void* doSth(void *arg){
 												//ukoncim thread ak chyba
 												return(NULL);
 											}
+											closedir(d);
 											break;
   									}
   								}
@@ -1682,5 +1683,5 @@ int main(int argc, char **argv){
 
 	pthread_mutex_destroy(&mailMutex);
 
-    exit(0);
+    return 0;
 }
