@@ -74,7 +74,10 @@ commands hashCommand(string command){
 }
 
 string absolutePath(const char *filename){
-	string path=realpath(filename,NULL);
+	string path;
+	char* tmppath=realpath(filename,NULL);
+	path = tmppath;
+	free(tmppath);
 	return path;
 }
 
@@ -115,10 +118,16 @@ int getVirtualSize(string filename){
 		if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
 			break;
 		}
-		//pozrieme ci je tam \r
-		if(line[line.length()-1] != '\r'){
+		//pozrieme ci je tam \r -- iba vtedy ak riadok neni prazdny
+		if(line.length() > 0){
+			if(line[line.length()-1] != '\r'){
+				linenumber++;
+			}
+		}
+		else{//ak na riadku bolo iba \n
 			linenumber++;
 		}
+
 	}
 	file.close();
 	size += linenumber;
@@ -518,6 +527,7 @@ void* doSth(void *arg){
   										ofstream resfile("reset.txt");
   										ofstream infoFile("info.txt");
   										ofstream deleted("deleted.txt");
+  										deleted.close();
   									}
   									ofstream resetFile;
   									ofstream infoFile;
@@ -1603,6 +1613,7 @@ int main(int argc, char **argv){
     if((setsockopt(listenSocket,SOL_SOCKET,SO_REUSEADDR,&optval,sizeof(int))) < 0){
     	cerr << "Chyba pri setsockopt reuseaddr" << endl;
     	pthread_mutex_destroy(&mailMutex);
+    	close(listenSocket);
 		exit(1);
     }
 
@@ -1610,6 +1621,7 @@ int main(int argc, char **argv){
 	if (bind(listenSocket, (struct sockaddr *)&server, sizeof(server)) < 0){
 		cerr << "Chyba pri bindovani socketu." << endl;
 		pthread_mutex_destroy(&mailMutex);
+		close(listenSocket);
 		exit(1);
 	}    
 
@@ -1617,6 +1629,7 @@ int main(int argc, char **argv){
 	if (listen(listenSocket, QUEUE) < 0){
 		cerr << "Chyba pri nastaveni socketu na pasivny(funkcia listen())." << endl;
 		pthread_mutex_destroy(&mailMutex);
+		close(listenSocket);
 		exit(1);
 	}
 
@@ -1625,6 +1638,7 @@ int main(int argc, char **argv){
 	if ((fcntl(listenSocket, F_SETFL, flags | O_NONBLOCK))<0){
 		cerr << "Chyba pri nastaveni listen socketu na neblokujuci." << endl;
 		pthread_mutex_destroy(&mailMutex);
+		close(listenSocket);
 		exit(1);							
 	}
 	
