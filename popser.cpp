@@ -1481,9 +1481,10 @@ void* doSth(void *arg){
 					ifstream log;
 					ofstream tmp;
 					char tmpfilename[256];
-					log.open("info.txt");
-					tmp.open("tmp.txt");
+
 					for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {//prejdeme vsetky oznacene subory
+						log.open("info.txt");
+						tmp.open("tmp.txt");
 						filename = vars.maildir + "/cur/" + *iterator;
 						if(remove(filename.c_str())!=0){//vymazeme subor
 							cerr << "Chyba pri mazani mailu" << endl;
