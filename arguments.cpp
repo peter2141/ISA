@@ -90,9 +90,7 @@ void arguments::parseArgs(int argc, char **argv){
 			if(remove("info.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
-			if(remove("deleted.txt")!=0){
-				cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
-			}
+
 
 
 

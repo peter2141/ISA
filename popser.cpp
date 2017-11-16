@@ -140,14 +140,39 @@ void getFilesInCur(vector<string>& files,string maildir){
 	struct dirent *tmpfile;
 	string curdir = maildir + "/cur";
 	tmpdir = opendir(curdir.c_str());
+	ifstream log;
+	string line;
+	char tmpfilename[256];
+	bool fileincur=false;
 	while((tmpfile = readdir(tmpdir)) != NULL){
-			if(!strcmp(tmpfile->d_name,".") || !strcmp(tmpfile->d_name,"..") ){
-				continue;
+		fileincur = false;
+		//skontrolujeme ci subor sa presunul z new do cur alebo bol rucne pridany do cur-ak nao tak ho ignorujeme
+		log.open("info.txt");
+		while (getline(log,line)){
+			//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
+			if ((log.rdstate() & std::ifstream::eofbit ) != 0 ){
+				break;
 			}
-			else{
-				//pridame nazov suboru do vectoru mien
-				files.push_back(string(tmpfile->d_name));
-			}		
+			sscanf(line.c_str(),"%[^/]/%*[^/]/%*d",tmpfilename);//nacitame nazov a velkost suboru
+			
+			//kontrola ci subor sa nachadza v log--ak ano tak dobre
+			if (!strcmp(tmpfilename,tmpfile->d_name)){
+	            fileincur = true;
+	            break;
+	        }
+	    }	    
+	    log.close();
+
+		
+	    //ak . alebo .. alebo subor nebol v logfile tak ho preskocime
+		if(!strcmp(tmpfile->d_name,".") || !strcmp(tmpfile->d_name,"..") || !fileincur){
+			continue;
+		}
+		//ifstream log,deleted;
+		else{
+			//pridame nazov suboru do vectoru mien
+			files.push_back(string(tmpfile->d_name));
+		}		
 	}
 	closedir(tmpdir);
 }
@@ -322,7 +347,6 @@ void* doSth(void *arg){
 	gethostname(name,100);
 	string welcomeMsg = "+OK POP3 server ready <" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">\r\n";
 
-
 	//poslanie uvitacej spravy
 	sen = mySend(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()));
 	if(!sen){
@@ -331,7 +355,7 @@ void* doSth(void *arg){
 	}
 
 	//vypocitanie hashu
-	string stringToHash = welcomeMsg + vars.password;
+	string stringToHash = "<" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">" + vars.password;
 
  	string hash;
 
@@ -461,13 +485,40 @@ void* doSth(void *arg){
   						case user://prisiel prikaz user
 							if(vars.crypt){//bol zadany parameter -c, USER after USER moze byt
 
+								bool space = false;
+								for (unsigned i=0; i<argument.length(); i++){
+    								if(isspace(argument[i])){
+										space = true;
+    								}
+  								}
+
+  								if(space){
+  									sen = mySend(acceptSocket,"-ERR Username can not contain whitespace.\r\n",strlen("-ERR Username can not contain whitespace.\r\n"));
+									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
+									break;
+  								}
+  								if(argument==""){
+  									sen = mySend(acceptSocket,"-ERR Username was not entered.\r\n",strlen("-ERR Username was not entered.\r\n"));
+										if(!sen){
+											//ukoncim thread ak chyba
+											return(NULL);
+										}
+										break;
+  								}
+
+  							
 								sen = mySend(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"));
 								if(!sen){
 									//ukoncim thread ak chyba
 									return(NULL);
 								}
 								username = argument;
-								userOK = true;
+								userOK = true;	
+  								
+
 								break;
 
 							}
@@ -526,8 +577,6 @@ void* doSth(void *arg){
   									if(firstRun){
   										ofstream resfile("reset.txt");
   										ofstream infoFile("info.txt");
-  										ofstream deleted("deleted.txt");
-  										deleted.close();
   									}
   									ofstream resetFile;
   									ofstream infoFile;
@@ -628,9 +677,43 @@ void* doSth(void *arg){
 								}
 								break;
   							}
-  							//pridanie username k hashu
-  							string apopstr = vars.username + " " + argument;
-  							if(hash.compare(apopstr) == 0){
+							
+							//spocitame biele znaky v argumente
+							int space = 0;
+							for (unsigned i=0; i<argument.length(); i++){
+								if(isspace(argument[i])){
+									space++;
+								}
+							}
+
+
+							//TODO osetrit ak iba whitespace v argumente--rozdelit???????
+
+							//ak okrem medzeri medzi username a digest bol est enejaky whitespace
+							if(space > 1){
+								sen = mySend(acceptSocket,"-ERR Username or digest not contain whitespace.\r\n",strlen("-ERR Username or digest not contain whitespace.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
+							
+
+							//prazdny argument
+							if(argument==""){
+								sen = mySend(acceptSocket,"-ERR No username and digest entered.\r\n",strlen("-ERR No username and digest entered.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
+ 						
+ 							//pridanie username k hashu
+  							string hash2 = vars.username + " " + hash;
+  							string apopstr = argument;
+  							if(hash2.compare(apopstr) == 0){
 								//kontrola maildiru
 								if(!checkMaildir(vars)){
   										sen = mySend(acceptSocket,"-ERR problem with maildir.\r\n",strlen("-ERR problem with maildir.\r\n"));
@@ -673,7 +756,6 @@ void* doSth(void *arg){
 								if(firstRun){
 									ofstream resfile("reset.txt");
 									ofstream infoFile("info.txt");
-									ofstream deleted("deleted.txt");
 								}
 								ofstream resetFile;
 								ofstream infoFile;
@@ -966,20 +1048,7 @@ void* doSth(void *arg){
 									    	break;
 									    }
 									}
-									//kontorla ci subor uz nebol zmazany nahodou
-									ifstream delfile;
-									delfile.open("deleted.txt");
-									while(!delfile.eof()){
-										getline(delfile,line);
-										if ((delfile.rdstate() & std::ifstream::eofbit ) != 0 ){
-											break;
-										}
-										if(!strcmp(line.c_str(),filename)){//subor uz bol zmazany
-											wasdeleted = true;
-											break;
-										}
-									}
-									delfile.close();
+
 									//ak bol oznaceny na mazanie alebo zmazany tak sa nepripocita jeho velkost a nepripocitava sa ani do poctu mailov
 									if(wasdeleted){
 										wasdeleted = false;
@@ -1408,17 +1477,35 @@ void* doSth(void *arg){
   				}
 				case update:{//vymazat deleted
 					string filename;
-					ofstream deleted;
-					deleted.open("deleted.txt", std::ofstream::app);
+					string line;
+					ifstream log;
+					ofstream tmp;
+					char tmpfilename[256];
+					log.open("info.txt");
+					tmp.open("tmp.txt");
 					for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {//prejdeme vsetky oznacene subory
-						//pridame nazov suboru do suboru s mazanymi mailmi
-						deleted << *iterator << endl;
 						filename = vars.maildir + "/cur/" + *iterator;
 						if(remove(filename.c_str())!=0){//vymazeme subor
 							cerr << "Chyba pri mazani mailu" << endl;
 						}
+						//vymazeme zaznam o suboru v log.txt
+						while (getline(log,line)){
+							sscanf(line.c_str(),"%[^/]/%*[^/]/%*d",tmpfilename);//nacitame nazov a velkost suboru
+	       					//ak riaodk s informaciou o subore na mazanie tak preskocime
+	       					if (strcmp(tmpfilename,*iterator))
+					        {
+					            tmp << line << endl;
+					        }
+					    }
+					    
+					    tmp.close();
+					    log.close();
+						
+						//vytvorime novy log
+						remove("info.txt");
+						rename("tmp.txt","info.txt");
 					}
-					deleted.close();
+
 					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
 					pthread_mutex_unlock(&mailMutex);
 					threadcount--;
@@ -1545,9 +1632,6 @@ int main(int argc, char **argv){
 			}
 			if(remove("info.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
-			}
-			if(remove("deleted.txt")!=0){
-				cerr << "Chyba pri mazani pomocneho suboru na ukladanie mazanych suborov" << endl;
 			}
 
 			//odstranit vsetko ostatne z cur
