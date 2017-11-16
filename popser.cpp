@@ -213,12 +213,6 @@ bool checkMaildir(struct threadVar args){
     }
     closedir(dir);
 
-    tmpdir = args.maildir + "/tmp";
-    if((dir = opendir(tmpdir.c_str())) == NULL){
-    	cerr << "Maildir neobsahuje potrebne adresare" << endl;
-    	return false;
-    }
-    closedir(dir);
 
     tmpdir = args.maildir + "/new";
     if((dir = opendir(tmpdir.c_str())) == NULL){
@@ -261,6 +255,10 @@ void readAuthFile(string& username, string& password,arguments args){
 		else if(counter == 22){
 			if(tmpString == "password = "){
 				while((ch = fgetc(f)) != EOF){//do konca riadku nacitame prihlasovacie meno
+					//druha newlina
+					if(ch=='\n'){
+						break;
+					}
 					password += ch;
 				}
 				tmpString = "";
@@ -318,7 +316,7 @@ bool mySend(int socket,const char *msg,size_t msgsize){
 		}
 
 	}
-	cout << size << endl;
+	//cout << size << endl;
 	return true;
 
 }
@@ -598,8 +596,8 @@ void* doSth(void *arg){
 											tmpfilename1 = tmpdir + "/"+ file->d_name;
 											tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
 											if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
-												cout << tmpfilename1 << endl;
-												cout << tmpfilename2<< endl;
+												//cout << tmpfilename1 << endl;
+												//cout << tmpfilename2<< endl;
 												cerr << "chyba pri premenovani(presune) z new do cur" << endl;
 												close(acceptSocket);
 			  									pthread_mutex_unlock(&mailMutex);
@@ -1164,7 +1162,7 @@ void* doSth(void *arg){
 									while(!f.eof()){
 										getline(f,tmpline);
 										if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
-											cout << "last line" << endl;
+											//cout << "last line" << endl;
 											
 												if(tmpline.size() > 0){//ak neni prazdny riadok
 													if(tmpline[0] == '.'){
@@ -1557,7 +1555,7 @@ void* doSth(void *arg){
     pthread_mutex_unlock(&mailMutex);//TODO
     close(acceptSocket);
     threadcount--;
-    cout << to_string(threadcount) << endl;
+   // cout << to_string(threadcount) << endl;
     return (NULL);
 }
 
