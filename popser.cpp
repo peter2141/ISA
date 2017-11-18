@@ -19,14 +19,10 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <fstream>
-#include <streambuf>
-#include <sstream>
 #include <fcntl.h>
 #include <openssl/md5.h>
 #include <csignal>
-#include <regex>
 #include <locale> 
-#include <mutex>
 #include <dirent.h>
 #include <ctime>
 #include <list>
@@ -116,6 +112,14 @@ int getVirtualSize(string filename){
 
 		//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
 		if ((file.rdstate() & std::ifstream::eofbit ) != 0 ){
+			//ak eof este mohol tam byt riadok bez \n
+			//pozrieme ci je tam \r -- iba vtedy ak riadok neni prazdny
+			if(line.length() > 0){
+				if(line[line.length()-1] != '\r'){
+					linenumber++;
+				}
+				linenumber++;//aj \n
+			}
 			break;
 		}
 		//pozrieme ci je tam \r -- iba vtedy ak riadok neni prazdny
@@ -327,6 +331,8 @@ void* doSth(void *arg){
 	//odpojime thread, netreba nanho cakat v hlavnom threade
 	pthread_detach(pthread_self());
 	
+	//cout << pthread_self() << endl;
+
 	
 	threadVar vars;
 	vars = *((threadVar*)arg);
@@ -343,7 +349,12 @@ void* doSth(void *arg){
 	//vytvorenie uvitacej spravy
 	char name[100];
 	gethostname(name,100);
-	string welcomeMsg = "+OK POP3 server ready <" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">\r\n";
+	
+	//string welcomeMsg = "+OK POP3 server ready <" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">\r\n";
+
+	//pre kazdy thread unikatny welcome msg?? TODO
+	string welcomeMsg = "+OK POP3 server ready <" + to_string(pthread_self()) + "." + to_string(time(NULL)) + "@"  + name + ">\r\n";
+
 
 	//poslanie uvitacej spravy
 	sen = mySend(acceptSocket,welcomeMsg.c_str(),strlen(welcomeMsg.c_str()));
@@ -353,7 +364,9 @@ void* doSth(void *arg){
 	}
 
 	//vypocitanie hashu
-	string stringToHash = "<" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">" + vars.password;
+	//string stringToHash = "<" + to_string(getpid()) + "." + to_string(time(NULL)) + "@"  + name + ">" + vars.password;
+	string stringToHash = "<" + to_string(pthread_self()) + "." + to_string(time(NULL)) + "@"  + name + ">" + vars.password;
+
 
  	string hash;
 
@@ -544,12 +557,7 @@ void* doSth(void *arg){
   										return(NULL);
   									}
 
-  									//ak maildir ok aj heslo ok tak posleme kladnu odpoved
-  									sen = mySend(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"));
-  									if(!sen){
-										//ukoncim thread ak chyba
-										return(NULL);
-									}
+
   									if(pthread_mutex_trylock(&mailMutex)){//kontrola ci je maildir obsadenyy
   										sen = mySend(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"));
   										if(!sen){
@@ -560,6 +568,14 @@ void* doSth(void *arg){
   										threadcount--;
   										return(NULL);
   									}
+
+  									//posle sa ok iba vtedy ak maildir neni locknuty
+   									//ak maildir ok aj heslo ok tak posleme kladnu odpoved
+  									sen = mySend(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"));
+  									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
 
   									getFilesInCur(mailnums,vars.maildir);//ziskame subory z current ktore su uz tam
 
@@ -724,11 +740,7 @@ void* doSth(void *arg){
   										return(NULL);
   								}
 
-  								sen = mySend(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"));
-  								if(!sen){
-									//ukoncim thread ak chyba
-									return(NULL);
-								}
+
 								if(pthread_mutex_trylock(&mailMutex) != 0){
 									sen = mySend(acceptSocket,"-ERR Mailbox locked, try next time\r\n",strlen("-ERR Mailbox locked, try next time\r\n"));
 									if(!sen){
@@ -737,6 +749,13 @@ void* doSth(void *arg){
 									}
 									close(acceptSocket);//odpojime klienta, alebo neodpajat????
 									threadcount--;
+									return(NULL);
+								}
+
+								//ak vsetko v poriadku posle sa OK
+ 								sen = mySend(acceptSocket,"+OK Correct password\r\n",strlen("+OK Correct password\r\n"));
+  								if(!sen){
+									//ukoncim thread ak chyba
 									return(NULL);
 								}
 
@@ -1520,7 +1539,8 @@ void* doSth(void *arg){
 		}
         else if (res == 0) //ak sa klient odpoji -> odznacit subory na delete,odomknut zamok
         { 
-            printf("Client disconnected\n");
+        	//osetrit? TODO
+            //cerr << "Client disconnected\n"; asi netreba
             pthread_mutex_unlock(&mailMutex);					
 			break;
         }
