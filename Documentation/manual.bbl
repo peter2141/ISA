@@ -1,0 +1,24 @@
+\begin{thebibliography}{1}
+\providecommand{\url}[1]{\texttt{#1}}
+\providecommand{\urlprefix}{URL }
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
+  \providecommand{\doi}{doi:\discretionary{}{}{}\begingroup
+  \urlstyle{rm}\Url}\fi
+\providecommand{\selectlanguage}[1]{\relax}
+\providecommand{\eprint}[2][]{\url{#2}}
+
+\bibitem{maildir}
+Bernstein, D.~J.: {\it Using maildir format}. [Online].
+\newline\urlprefix\url{http://cr.yp.to/proto/maildir.html}
+
+\bibitem{pop3}
+Myers, J.; Mellon, C.; Rose, M.: {\it Post Office Protocol - Version 3}. 1996,
+  [Online].
+\newline\urlprefix\url{http://www.ietf.org/rfc/rfc1939.txt}
+
+\bibitem{imf}
+P.~Resnick, E.: {\it Internet Message Format}. 2008, [Online].
+\newline\urlprefix\url{http://tools.ietf.org/html/rfc5322}
+
+\end{thebibliography}

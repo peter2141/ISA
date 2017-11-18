@@ -199,6 +199,22 @@ void createUIDL(char* filename, string& UIDL){
 	md5hash(tmp,UIDL);
 }
 
+
+//zistenie cesty k binarke-k ukladaniu pomocnych suborov
+void pathToBinary(string& path){
+	char buff[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff)-1);
+    string asdpath;
+    if (len != -1) {
+      buff[len] = '\0';
+      asdpath = buff;
+    }
+
+    size_t position = asdpath.rfind("/");
+    asdpath.erase(position+1,string::npos);
+    path = asdpath;
+}
+
 //kontrola spravneho formatu maildiru
 bool checkMaildir(struct threadVar args){
 	//kontrola maildiru a podpriecinkov
@@ -496,6 +512,18 @@ void* doSth(void *arg){
   						case user://prisiel prikaz user
 							if(vars.crypt){//bol zadany parameter -c, USER after USER moze byt
 
+								//kontrola dlzky argumentu - dane v RFC
+								if(argument.length()>40){
+									sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
+									break;
+								}
+
+
+								//kontrola ci argument obsahuje medzeru
 								bool space = false;
 								for (unsigned i=0; i<argument.length(); i++){
     								if(isspace(argument[i])){
@@ -503,6 +531,7 @@ void* doSth(void *arg){
     								}
   								}
 
+  								//ak ano chyba
   								if(space){
   									sen = mySend(acceptSocket,"-ERR Username can not contain whitespace.\r\n",strlen("-ERR Username can not contain whitespace.\r\n"));
 									if(!sen){
@@ -511,6 +540,8 @@ void* doSth(void *arg){
 									}
 									break;
   								}
+
+  								//ak prazdny argument tiez chyba
   								if(argument==""){
   									sen = mySend(acceptSocket,"-ERR Username was not entered.\r\n",strlen("-ERR Username was not entered.\r\n"));
 										if(!sen){
@@ -520,7 +551,7 @@ void* doSth(void *arg){
 										break;
   								}
 
-  							
+  								//ak vsetko v pohode tak OK
 								sen = mySend(acceptSocket,"+OK Hello my friend\r\n",strlen("+OK Hello my friend\r\n"));
 								if(!sen){
 									//ukoncim thread ak chyba
@@ -543,6 +574,15 @@ void* doSth(void *arg){
 							}
   							break;
   						case pass:{
+							//kontrola dlzky argumentu - dane v RFC
+							if(argument.length()>40){
+								sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
   							if(userOK){
   								if(vars.password.compare(argument) == 0 && vars.username.compare(username) == 0){//dobre heslo a meno
   									//najpr skontrolujeme maildir
@@ -692,6 +732,29 @@ void* doSth(void *arg){
 								break;
   							}
 							
+
+  							//prazdny argument
+							if(argument==""){
+								sen = mySend(acceptSocket,"-ERR No username and digest entered.\r\n",strlen("-ERR No username and digest entered.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
+
+							//kontrola dlzky argumentu - dane v RFC
+							if(argument.length()>81){//40+40+medzera
+								sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
+
+
+
 							//spocitame biele znaky v argumente
 							int space = 0;
 							for (unsigned i=0; i<argument.length(); i++){
@@ -701,7 +764,22 @@ void* doSth(void *arg){
 							}
 
 
-							//TODO osetrit ak iba whitespace v argumente--rozdelit???????
+							//TODO osetrit ak iba whitespace v argumente--rozdelit??????? osetrit ak iba username alebo iba apop - trebaa? vypisat ze chyba nie whitespace
+
+							//pozrieme ci 1 znak alebo posledny je space
+							int spaceloc1 = 1;
+							int spaceloc2 = 0;
+						 	spaceloc1 = argument.find(" ");
+							spaceloc2 = argument.rfind(" ");
+
+							if(spaceloc1 == 0 || spaceloc2 == (int)(argument.length()-1)){
+								sen = mySend(acceptSocket,"-ERR Username or digest not contain whitespace.\r\n",strlen("-ERR Username or digest not contain whitespace.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							} 
 
 							//ak okrem medzeri medzi username a digest bol est enejaky whitespace
 							if(space > 1){
@@ -714,15 +792,7 @@ void* doSth(void *arg){
 							}
 							
 
-							//prazdny argument
-							if(argument==""){
-								sen = mySend(acceptSocket,"-ERR No username and digest entered.\r\n",strlen("-ERR No username and digest entered.\r\n"));
-								if(!sen){
-									//ukoncim thread ak chyba
-									return(NULL);
-								}
-								break;
-							}
+
  						
  							//pridanie username k hashu
   							string hash2 = vars.username + " " + hash;
@@ -838,7 +908,7 @@ void* doSth(void *arg){
 								break;
   							}
   							else{
-  								sen = mySend(acceptSocket,"-ERR Wrong MD5 hash\r\n",strlen("-ERR Wrong MD5 hash\r\n"));
+  								sen = mySend(acceptSocket,"-ERR Wrong MD5 hash or wrong username\r\n",strlen("-ERR Wrong MD5 hash or wrong username\r\n"));
   								if(!sen){
 									//ukoncim thread ak chyba
 									return(NULL);
@@ -949,6 +1019,16 @@ void* doSth(void *arg){
 	  							}	
   							}
   							else{//bol zadany argument
+  								//kontrola dlzky argumentu - dane v RFC
+								if(argument.length()>40){
+									sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
+									break;
+								}
+
   								//kontrola ci argument je cislo
   								if(!isnumber(argument)){
   									sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
@@ -1109,6 +1189,17 @@ void* doSth(void *arg){
 								}
 								break;
   							}
+
+  							//kontrola dlzky argumentu - dane v RFC
+							if(argument.length()>40){
+								sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
+
   							//kontrola ci argument je cislo
 							if(!isnumber(argument)){
 								sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
@@ -1118,6 +1209,7 @@ void* doSth(void *arg){
 								}
 								break;
 							}
+
   							DIR *d = NULL;
   							int msgnum = stoi(argument,nullptr,10);
   							msgnum -= 1;//kvoli indexovaniu vo vectore 
@@ -1251,6 +1343,17 @@ void* doSth(void *arg){
 								}
 								break;
   							}
+
+							//kontrola dlzky argumentu - dane v RFC
+							if(argument.length()>40){
+								sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+								if(!sen){
+									//ukoncim thread ak chyba
+									return(NULL);
+								}
+								break;
+							}
+
   							//kontrola ci argument je cislo
 							if(!isnumber(argument)){
 								sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
@@ -1385,6 +1488,17 @@ void* doSth(void *arg){
 	  							}	
   							}
   							else{//bol zadany argument
+
+								//kontrola dlzky argumentu - dane v RFC
+								if(argument.length()>40){
+									sen = mySend(acceptSocket,"-ERR Too long argument.\r\n",strlen("-ERR Too long argument.\r\n"));
+									if(!sen){
+										//ukoncim thread ak chyba
+										return(NULL);
+									}
+									break;
+								}
+
   								//kontrola ci argument je cislo
   								if(!isnumber(argument)){
   									sen = mySend(acceptSocket,"-ERR Not valid number\r\n",strlen("-ERR Not valid number\r\n"));
@@ -1472,11 +1586,11 @@ void* doSth(void *arg){
 							}
   							break;
   						case quit: 
-  							sen = mySend(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"));
+  							/*sen = mySend(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"));
   							if(!sen){
 								//ukoncim thread ak chyba
 								return(NULL);
-							}
+							}*/
   							state = "update";
   							break;
   						default:
@@ -1498,23 +1612,33 @@ void* doSth(void *arg){
 					ifstream log;
 					ofstream tmp;
 					char tmpfilename[256];
-
+					bool notdeleted = false;
 					for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {//prejdeme vsetky oznacene subory
+						notdeleted = false;
 						log.open("info.txt");
 						tmp.open("tmp.txt");
 						filename = vars.maildir + "/cur/" + *iterator;
-						if(remove(filename.c_str())!=0){//vymazeme subor
-							cerr << "Chyba pri mazani mailu" << endl;
+						if(remove(filename.c_str())!=0){//vymazeme subor, problem u mazani
+							notdeleted=true;//subor sa nepodarilo vymazat
 						}
-						//vymazeme zaznam o suboru v log.txt
-						while (getline(log,line)){
-							sscanf(line.c_str(),"%[^/]/%*[^/]/%*d",tmpfilename);//nacitame nazov a velkost suboru
-	       					//ak riaodk s informaciou o subore na mazanie tak preskocime
-	       					if (strcmp(tmpfilename,*iterator))
-					        {
-					            tmp << line << endl;
-					        }
-					    }
+
+						else{//ak mazanie okej
+							//vymazeme zaznam o suboru v log.txt
+							while (getline(log,line)){
+								sscanf(line.c_str(),"%[^/]/%*[^/]/%*d",tmpfilename);//nacitame nazov a velkost suboru
+		       					//ak riaodk s informaciou o subore na mazanie tak preskocime
+		       					if(notdeleted == false){
+			       					if (strcmp(tmpfilename,*iterator)){
+							            tmp << line << endl;
+							        }
+		       					}
+		       					else{//ak sa subor nepodarilo vymazat tak ho nechame v logfile
+		       						tmp << line << endl;
+		       					}
+
+						    }
+						}
+
 					    
 					    tmp.close();
 					    log.close();
@@ -1522,6 +1646,21 @@ void* doSth(void *arg){
 						//vytvorime novy log
 						remove("info.txt");
 						rename("tmp.txt","info.txt");
+					}
+
+					if(notdeleted == false){//vsetko sa podarilo vymazat
+						sen = mySend(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"));
+						if(!sen){
+							//ukoncim thread ak chyba
+							return(NULL);
+						}
+					}
+					else{
+						sen = mySend(acceptSocket,"-ERR deleting some messages.\r\n",strlen("-ERR deleting some messages.\r\n"));
+						if(!sen){
+							//ukoncim thread ak chyba
+							return(NULL);
+						}
 					}
 
 					close(acceptSocket);//odpojime klienta,//premiestnit do quit?/
@@ -1601,6 +1740,13 @@ int main(int argc, char **argv){
     threadVar tmp;//struktura pre premenne ktore je potrebne predat vlaknam
     tmp.username = "";
     tmp.password = "";
+
+
+
+    
+
+    /* handle error condition */
+
 
 
     //nacitanie username a password

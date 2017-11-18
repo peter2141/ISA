@@ -9,7 +9,8 @@
 \usepackage{url}
 \usepackage{color}
 \usepackage[unicode,colorlinks,hyperindex,plainpages=false,urlcolor=black,linkcolor=black,citecolor=black]{hyperref}
-
+\usepackage{graphics,picture}
+\usepackage{listings}
 
 \providecommand{\uv}[1]{\quotedblbase #1\textquotedblleft}
 
@@ -46,22 +47,96 @@
 \newpage
 
 %text
-\section{Úvodní strana}
-
-Název práce umístěte do zlatého řezu a nezapomeňte uvést dnešní datum a vaše jméno a přijímení.
-
-\section{Tabulky}
-
-Pro sázení tabulek můžeme použít buď prostředí \texttt{tabbing} nebo prostředí \texttt{tabular}.
+\section{Úvod}
+Táto dokumentácia popisuje program s názvom \textbf{popser} vytvorený ako projekt do predmetu Síťové aplikace a správa sítí. Úlohou tohoto zadania bolo vytvoriť e-mailový server, ktorý pracuje nad protokolom POP3, spracováva príkazy klientov a poskytuje na ne odpovede. Program má implementovať celú špecifikáciu POP3(okrem sekcie č. 8) a má pracovať s e-mailmy vo formáte IMF. V nasledujúcich častiach sú popísané jednotlivé protokoly, popis riešenia jednotlivých problémov a ich implementácia. 
 
 
-DDoS(Distributed denial of service) je útok, kde útočníci snažia vyčerpať dostupné zdroje obete. Základom je DoS útok, ktorý Do útoku je možné sa zapojiť dobrovoľne, kedy účastníci pomocou dostupných sowtwarov vykonávajú útok, alebo nakazením počítačov, kde útočník nakazí počítače a pomocou nich prevedie útok. V tomto prípade sieť počítačov sa skladá zo zombies a slave zombies, útočník ovláda len master zombies, ďalej master zombies ovládajú zombies\cite{cstugWeb}. 
-
-V dnešnej dobe sa DDoS často pužíva na zneprístupnenie rôznych internetových služieb. Bežným užívatelom sú dostupné bezplatné programy. Najčastejšie pužívaným je LOIC(Low orbit ion cannon), ktorý bombarduje server s TCP a UDP paketmi\cite{Rybicka}, čím sa vyťaženie serveru zvyšuje a pri veľkom množstve žiadostí už nevie oblúžiť klentov. Útok je možné aj zakúpiť na čiernom trhu, týždeň dlhý útok stojí 150\$\cite{Eikh}. Ako vidieť, možnosť DDoS útoku je dostupný skoro každému.
-
-Summa summarum, DDoS útoky nie sú tým najhorším útokom, ale môžu spôsobiť mnoho nepríjemností. fasz
+\section{Dôležité pojmy}
+Funkčnosť celej aplikácie je založená na niekoľkých protkoloch a štandardoch. K pochopeniu zadania a k vypracovaniu projektu je potrebné ich najprv preštudovať a porozumieť. 
 
 
+\subsection{POP3}
+Najdôležitejším protkolom v rámci celej implemetácie je protokol POP3(Post Office Protocol - Version 3) popísaný v RFC1939\cite{pop3}. Slúži na prístup k e-mailom na mailovom serveri ktorý podporuje tento protokol. Neposkytuje rozsiahle manipulačné operácie, zvyčajne klient sa pripojí k serveru, stiahne si maily a na serveri sa vymažú. Používa sa komunikácia klient-server. Klient po pripojení posielá príkazy serveru, server ich spracuje a poskytne odpoveď. Protokol popisuje presný formát správ a odpovedí. Odpoveď musí začať s +OK pri pozitívnej odpovedi, -ERR pri negatívnej. Pripojenie(session) prechádza niekoľkými stavmi. Obrázok \ref{fig:pop3FSM} popisuje stavy spojenia a prechody medzi nimi.
+
+\begin{figure}[h]
+  %\scalebox{0.4}{\includegraphics{pop3fsm.svg}}
+  \scalebox{0.5}{\includegraphics{pop3fsm.eps}}
+  \centering
+  \caption{Stavový automat pripojenia POP3.}
+  \label{fig:pop3FSM}
+\end{figure}
+
+
+\subsection{IMF}
+Internet message format je popísaný v RFC5322\cite{imf}. Udáva formát súborov s ktorými bude náš server pracovať. Každý e-mail sa má skladať z hlavičky a tela správy. Každý riadok súboru má byť ukončený s dvojicou znakou \textbackslash r\textbackslash n(tj. CRLF). 
+
+
+\subsection{Maildir}
+Formát Maildir\cite{maildir} popisuje potrebnú adresárovú štruktúru. Priečinok, ktorý bude použitý ako Maildir musí obsahovať adresáre \textbf{new}, \textbf{cur} a \textbf{tmp}, poprípade môže obashovať nejaké ďalšie súbory alebo adresáre. V rámci tejto implementácie sa používa iba new a cur, kedže s tmp pracujú rôzne SMTP servery. Tiež popisuje že jednotlivé e-mailové súbory musia mať jedinečný názov v rámci jedného Maildiru a premenovanie súborov pri presune z new do cur.\\\\
+
+
+
+
+\section{Návrh a implementácia}
+Program je implementovaný v jazyku C/C++ s použitím povolených knižníc potrebných pre vypracovanie zadania. Je rozdelený do dvoch modulov. Nie je použitý objektový návrh ale je vytvorená jedna trieda.  
+
+\subsection{Spracovanie argumentov}
+Pre spracovanie argumentov bola vytvorená trieda \texttt{Arguments}, ktorá obsahuje privátne premenné pre každý prepínač a jednu metódu na kontrolu argumentov. Na začiatku sa kontroluje či bol zadaný prepínač -h. Ďalej sa kontroluje či bol program spustený iba so samotným prepínačom -r. Na koniec sa povienné a volitelné parametre kontrolujú pomocou funkcie \texttt{getopts} ktorá vyhodnotí správnosť parametrov a ich hodnôt. Na začiatku main sa vytvorí objekt typu Arguments a zavolá sa metoda na spracovanie argumentov.
+
+\subsection{Pripojenie klientov}
+Sieťová komunikácia a pripojenie klientov je riešená pomocou BSD socketov. Kedže sa jedná o server ktorý je paralelný, čiže paralelne vybavuje každé pripojenie boli použité vlákna z knižnice pthread.h. Keď sa jeden klient pripojí akceptuje sa pripojenie, vytvorí sa socket cez ktorý komunikuje a ďalej jeho požiadavky sú spracované v rámci vlákna. Túto časť popisuje ďalšia kapitola.
+
+\subsection{Spracovanie príkazov}
+
+
+\subsection{Ukončenie signálom SIGINT}
+Na zachytenie signálu je použitá funkcia \texttt{signal} z knižnice \texttt{<csignal>}. Pri zachytení signálu je nastavená globálna premenná, ktorá sa kontroluje v podmienkách 
+cyklu pre prijímanie pripojení vo funkcií main a pre komunikáciu s klientom vo funkcií pre vlákno. Táto kontorla je možná kvôli použitiu neblokujúcich socketov, kde sa cyklí. Vlákno ukončí socket na ktorom kommunikuje a vhodne sa ukončí. Funkcia main čaká na ukončenie každého vlákna. Táto časť je riešená pomocou globálnej premennej, kde sa ukladá aktuálny počet vlákien. Ak sa vytvorí vlákno tak premennú inkrementuje, pri ukončení dekrementuje. Funkcia main sleduje túto premennú a ak už nie je aktívne žiadne vlákno tak zatvorí pasívny socket a skončí program.
+
+
+
+\subsection{Použíté knižnice} 
+\begin{lstlisting}
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <string.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <fstream>
+#include <fcntl.h>
+#include <openssl/md5.h>
+#include <csignal>
+#include <locale> 
+#include <dirent.h>
+#include <ctime>
+#include <list>
+#include <vector>
+\end{lstlisting}
+
+
+
+
+\section{Použitie programu}
+Program má tri režimy behu:
+\begin{enumerate}
+  \item ./popser -h: Vypíše sa nápoveda, program sa správne ukončí.
+  \item ./popser -r: Reset, Maildir sa vráti do stavu, ako keby server nebol nikdy spustení, program sa správne ukončí.
+  \item ./popser -p číslo\_portu -a autentifikačný\_súbor -d  cesta\_k\_maildiru [-r] [-c]: Server sa spustí, komunikuje na zadanom porte, pracuje so zadaným Maildirom a načíta užívateľské meno a heslo zo súboru autentifikačný\_súbor. Pri zadaní parametru -c sa povolí autentifikácia typu USER/PASS, inak je povolená autentifikácia pomocou príkazu APOP. Parameter má rovnaký význam ako v príklade č. 2, čiže resetne server ale teraz sa neukončí ale beží ďalej.
+\end{enumerate}
+
+
+
+\section{Záver}
+Program bol spočiatku vyvíjaný na Ubuntu 16.04.03 LTS, neskôr však radšej som to presunul na školský server Merlin kvôli tomu že tu sa bude testovať aj odovzdaná verzia.
+Program je preložený prekladačom g++ a Makefile, ktorý je v odovzdaných súboroch. 
 
 
 \newpage
