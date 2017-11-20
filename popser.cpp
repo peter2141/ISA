@@ -75,6 +75,8 @@ commands hashCommand(string command){
 
 
 //zistenie cesty k binarke-k ukladaniu pomocnych suborov
+//zaklad kodu z https://stackoverflow.com/questions/5525668/how-to-implement-readlink-to-find-the-path  
+//tu trosku modifikovany na potreby servera
 void pathToBinary(string& path){
 	char buff[PATH_MAX];
     ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff)-1);
@@ -83,7 +85,11 @@ void pathToBinary(string& path){
       buff[len] = '\0';
       asdpath = buff;
     }
-    //TODO oserit ak chyba
+    else{//ak chyba
+    	cerr << "Chyba pri ziskavanie cesty k binarnemu suboru." << endl;
+		pthread_mutex_destroy(&mailMutex);  
+		exit(1); 
+    }
     size_t position = asdpath.rfind("/");
     asdpath.erase(position+1,string::npos);
     path = asdpath;
@@ -229,7 +235,7 @@ int getVirtualSize(string filename){
 
 
 //ziskanie nazvov suborov v zadanom pricinku
-void getFilesInCur(vector<string>& files,string maildir){
+void getFilesInCur(vector<string>& files,string maildir, string binarypath){
 	DIR *tmpdir=NULL;
 	struct dirent *tmpfile;
 	string curdir = maildir + "/cur";
@@ -241,7 +247,7 @@ void getFilesInCur(vector<string>& files,string maildir){
 	while((tmpfile = readdir(tmpdir)) != NULL){
 		fileincur = false;
 		//skontrolujeme ci subor sa presunul z new do cur alebo bol rucne pridany do cur-ak nao tak ho ignorujeme
-		log.open("info.txt");
+		log.open(binarypath + "info.txt");
 		while (getline(log,line)){
 			//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
 			if ((log.rdstate() & std::ifstream::eofbit ) != 0 ){
@@ -642,26 +648,27 @@ void* doSth(void *arg){
 										return(NULL);
 									}
 
-  									getFilesInCur(mailnums,vars.maildir);//ziskame subory z current ktore su uz tam
+  									getFilesInCur(mailnums,vars.maildir,vars.binarypath);//ziskame subory z current ktore su uz tam
 
 
   									bool firstRun = true;//kontrola prveho spustenia
 
 
   									struct stat buffer;   
-  									if(stat("reset.txt", &buffer) == 0){
+  									string tempname = vars.binarypath + "reset.txt";
+  									if(stat(tempname.c_str(), &buffer) == 0){
   										firstRun = false;
   									}
   									//vytvorime potrebne pomocne subory
   									if(firstRun){
-  										ofstream resfile("reset.txt");
-  										ofstream infoFile("info.txt");
+  										ofstream resfile(vars.binarypath + "reset.txt");
+  										ofstream infoFile(vars.binarypath +  "info.txt");
   									}
   									ofstream resetFile;
   									ofstream infoFile;
 
-  									infoFile.open("info.txt", std::ofstream::app);
-  									resetFile.open("reset.txt",std::ofstream::app);
+  									infoFile.open(vars.binarypath + "info.txt", std::ofstream::app);
+  									resetFile.open(vars.binarypath + "reset.txt",std::ofstream::app);
 
   									//presun z new do cur
   									DIR *dir=NULL;
@@ -849,26 +856,27 @@ void* doSth(void *arg){
 									return(NULL);
 								}
 
-								getFilesInCur(mailnums,vars.maildir);//ziskame subory v current, preto tu lebo iba teraz mozeme pristupovat k maildiru
+								getFilesInCur(mailnums,vars.maildir,vars.binarypath);//ziskame subory v current, preto tu lebo iba teraz mozeme pristupovat k maildiru
 
 
 								bool firstRun = true;//kontrola prveho spustenia
 
 
-								struct stat buffer;   
-								if(stat("reset.txt", &buffer) == 0){
+								struct stat buffer; 
+								string tempname = vars.binarypath + "reset.txt";  
+								if(stat(tempname.c_str(), &buffer) == 0){
 									firstRun = false;
 								}
 								//vytvorime potrebne pomocne subory
 								if(firstRun){
-									ofstream resfile("reset.txt");
-									ofstream infoFile("info.txt");
+									ofstream resfile(vars.binarypath + "reset.txt");
+									ofstream infoFile(vars.binarypath + "info.txt");
 								}
 								ofstream resetFile;
 								ofstream infoFile;
 
-								infoFile.open("info.txt", std::ofstream::app);
-								resetFile.open("reset.txt",std::ofstream::app);
+								infoFile.open(vars.binarypath + "info.txt", std::ofstream::app);
+								resetFile.open(vars.binarypath + "reset.txt",std::ofstream::app);
 
 								//presun z new do cur
 								DIR *dir=NULL;
@@ -1000,7 +1008,7 @@ void* doSth(void *arg){
 	  										char filename[256];
 	  										string line;
 	  										ifstream file;
-	  										file.open("info.txt");		
+	  										file.open(vars.binarypath + "info.txt");		
 
 	  										while(!file.eof()){//kym neni eof
 												getline(file,line);
@@ -1112,7 +1120,7 @@ void* doSth(void *arg){
 	  										char filename[256];
 	  										string line;
 	  										ifstream file;
-	  										file.open("info.txt");		
+	  										file.open(vars.binarypath + "info.txt");		
 
 	  										while(!file.eof()){//kym neni eof
 												getline(file,line);
@@ -1160,7 +1168,7 @@ void* doSth(void *arg){
   								char filename[256];
   								string line;
   								ifstream file;
-  								file.open("info.txt");
+  								file.open(vars.binarypath + "info.txt");
   								bool wasdeleted = false;
   								//ziskame velkosti suborov
   								while(!file.eof()){//kym neni eof
@@ -1305,7 +1313,7 @@ void* doSth(void *arg){
 	  								char filename[256];
 	  								string line;
 	  								ifstream file;
-	  								file.open("info.txt");		
+	  								file.open(vars.binarypath + "info.txt");		
 
 									while(!file.eof()){//kym neni eof
 										getline(file,line);
@@ -1516,7 +1524,7 @@ void* doSth(void *arg){
 	  										char uidl[256];//osetrit ze negenerujem taky dlhe uidl TODO
 	  										string line;
 	  										ifstream file;
-	  										file.open("info.txt");		
+	  										file.open(vars.binarypath + "info.txt");		
 	  										while(!file.eof()){//kym neni eof
 												getline(file,line);
 												//ak EOF(obsahoval este \n ale getline to uz nacitalo takze testujeme tu)
@@ -1626,7 +1634,7 @@ void* doSth(void *arg){
 	  										char uidl[256];
 	  										string line;
 	  										ifstream file;
-	  										file.open("info.txt");		
+	  										file.open(vars.binarypath + "info.txt");		
 
 	  										while(!file.eof()){//kym neni eof
 												getline(file,line);
@@ -1694,8 +1702,8 @@ void* doSth(void *arg){
 					//prejdeme vsetky oznacene subory
 					for (list<char*>::const_iterator iterator = tmpdel_list.begin(); iterator != tmpdel_list.end(); iterator++) {
 						notdeleted = false;
-						log.open("info.txt");
-						tmp.open("tmp.txt");
+						log.open(vars.binarypath + "info.txt");
+						tmp.open(vars.binarypath + "tmp.txt");
 						filename = vars.maildir + "/cur/" + *iterator;
 						if(remove(filename.c_str())!=0){//vymazeme subor, problem u mazani
 							notdeleted=true;//subor sa nepodarilo vymazat
@@ -1722,9 +1730,11 @@ void* doSth(void *arg){
 					    tmp.close();
 					    log.close();
 						
-						//vytvorime novy log
-						remove("info.txt");
-						rename("tmp.txt","info.txt");
+						//vytvorime novy log, potrebne priappendovat cestu k binarke
+						string tempname = vars.binarypath + "info.txt";
+						string tempname2 = vars.binarypath + "tmp.txt";
+						remove(tempname.c_str());
+						rename(tempname2.c_str(),tempname.c_str());
 					}
 
 					if(notdeleted == false){//vsetko sa podarilo vymazat
@@ -1810,17 +1820,24 @@ void signalHandler(int x)
 //hlavna funkcia programu
 int main(int argc, char **argv){
 
+	//ziskame cestu k binarke - iba tu mame pravo na zapis a citanie, tam sa budu pridavat pomocne subory
+    string binarypath;
+    pathToBinary(binarypath);
+
     //vytvorenie objektu pre spracovanie argumentov
-    arguments args;
+    arguments args(binarypath);
     //kontrola parametrov
     args.parseArgs(argc,argv);
+
+
+
 
 	//struktura pre premenne ktore je potrebne predat vlaknam
     threadVar tmp;
 
     tmp.username = "";
     tmp.password = "";
-
+    tmp.binarypath = binarypath;//predame cestu k binarke do struktury
 
     //nacitanie username a password, 
     readAuthFile(tmp.username,tmp.password,args);
@@ -1833,7 +1850,7 @@ int main(int argc, char **argv){
     //RESET 
 	if(args.reset()){//bol zadany parameter -r
 		ifstream resetIn;
-		resetIn.open("reset.txt", ios::in);
+		resetIn.open(binarypath + "reset.txt", ios::in);
 		//kontrola ci existuje subor (da sa otvorit??)
 		if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){
 			//subor existuje		
@@ -1859,21 +1876,23 @@ int main(int argc, char **argv){
 				//presnieme naspat subor
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				
-				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
 				if(res != 0){ 
 					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
-					//posunut vsetko naspat? pokracovat?
 					pthread_mutex_destroy(&mailMutex);  
 					exit(1);
 				}
 			}
 			resetIn.close();
 
+
+			string tempname; // tmp premenna pre ukladanie nazvu suboru s absolutnou cestou
+			tempname = binarypath + "reset.txt";
 			//vymazu sa logovacie subory
-			if(remove("reset.txt")!=0){
+			if(remove(tempname.c_str())!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
 			}
-			if(remove("info.txt")!=0){
+			tempname = binarypath + "info.txt";
+			if(remove(tempname.c_str())!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
 		}

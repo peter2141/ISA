@@ -20,6 +20,7 @@ class arguments{
 		std::string authfile1;
 		bool crypt1;
 		bool reset1;
+		std::string binarypath;
 	
 	public:
 		//metody pre zistenie hodnot privatnych premennych
@@ -31,7 +32,7 @@ class arguments{
 		//metoda pre spracovanie argumentov
 		void parseArgs(int argc, char **argv);
 		//konstruktor
-		arguments(void);
+		arguments(string path);
 		
 };
 

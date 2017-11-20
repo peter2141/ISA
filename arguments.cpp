@@ -20,9 +20,10 @@ using namespace std;
 extern pthread_mutex_t mailMutex;
 
 //konstruktor - inicializacia potrebnych privatnych premennych
-arguments::arguments(void){
+arguments::arguments(string path){
    	arguments::crypt1=false;
 	arguments::reset1=false;
+	arguments::binarypath = path;
 }
 
 //metody pre zistenie hodnot privatnych premennych
@@ -63,7 +64,7 @@ void arguments::parseArgs(int argc, char **argv){
 	if(argc==2 && (string(argv[1])=="-r")){
 		ifstream resetIn;
 		ifstream deleteIn;
-		resetIn.open("reset.txt", ios::in);
+		resetIn.open(binarypath + "reset.txt", ios::in);
 		//kontrola ci existuje subor (da sa otvorit??)
 		if ((resetIn.rdstate() & std::ifstream::failbit ) == 0 ){//ak existuje subor tak este nebol pouzity reset
 			string filename;
@@ -99,10 +100,12 @@ void arguments::parseArgs(int argc, char **argv){
 			resetIn.close();
 
 			//odstranenie pomocnych suborov 
-			if(remove("reset.txt")!=0){
+			string tempname = binarypath + "reset.txt";
+			if(remove(tempname.c_str())!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
 			}
-			if(remove("info.txt")!=0){
+			tempname = binarypath + "info.txt";
+			if(remove(tempname.c_str())!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
 

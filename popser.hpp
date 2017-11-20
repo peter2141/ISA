@@ -45,6 +45,7 @@ struct threadVar{
 	std::string username;
 	std::string password;
 	std::string maildir;
+	std::string binarypath;
 };
 
 #endif
