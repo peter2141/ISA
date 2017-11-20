@@ -31,5 +31,15 @@ PARAMETRE
 	-c
 		Povoliť nešifrovanú autentizáciu klientom.
 
+Odovzdané súbory:
+	popser.cpp
+	popser.hpp
+	arguments.cpp
+	arguments.hpp
+	Makefile
+	Readme
+	manual.pdf
+
 AUTOR
-	Peter Šuhaj(xsuha02)
+	Peter Šuhaj(xsuhaj02)
+

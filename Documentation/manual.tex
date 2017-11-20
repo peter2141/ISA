@@ -78,7 +78,7 @@ Formát Maildir\cite{maildir} popisuje potrebnú adresárovú štruktúru. Prie�
 
 
 \section{Návrh a implementácia}
-Program je implementovaný v jazyku C/C++ s použitím povolených knižníc potrebných pre vypracovanie zadania. Je rozdelený do dvoch modulov. Nie je použitý objektový návrh ale je vytvorená jedna trieda.  
+Program je implementovaný v jazyku C/C++ s použitím povolených knižníc potrebných pre vypracovanie zadania. Je rozdelený do dvoch modulov. Nie je použitý objektový návrh ale je vytvorená jedna trieda ktorý reprezentuje jeden modul. Druhý modul je hlavný program s funkciou main a s ostatnými potrenými funkciami.   
 
 \subsection{Spracovanie argumentov}
 Pre spracovanie argumentov bola vytvorená trieda \texttt{Arguments}, ktorá obsahuje privátne premenné pre každý prepínač a jednu metódu na kontrolu argumentov. Na začiatku sa kontroluje či bol zadaný prepínač -h. Ďalej sa kontroluje či bol program spustený iba so samotným prepínačom -r. Na koniec sa povienné a volitelné parametre kontrolujú pomocou funkcie \texttt{getopts} ktorá vyhodnotí správnosť parametrov a ich hodnôt. Na začiatku main sa vytvorí objekt typu Arguments a zavolá sa metoda na spracovanie argumentov.
@@ -96,10 +96,10 @@ Pre generovanie hashu pri príkazu APOP bola použitá funkcia \texttt{MD5} z kn
 
 Po úspešnej autentifikácii klienta je prevedná kontrola správnosti adresárovej štruktúry, ak je chybná tak server odpojí aktuálneho klienta. Tiež sa vykoná pokus o uzamknutie Maildiru. Pri tejto implementácií ak sa nepodarí pričinok uzamknúť tak klient je odpojený. Na uzamknutie sa používa globálna premenná typu \texttt{pthread\_mutex\_t}.    
 
-Veľkosť súborov je vypočítaná pri presune z new do cur. Kvôli rôznej reprezentácií ukončovanie riadku na odlišných systémoch bola potreba kontorlovať znak ukončenia riadku. V pŕipade ak riadok končí iba \textbackslash n tak k celkovej veľkosti je prirrátaný ešte jeden bajt, kedže protokol POP3 udává že každý riadok má byť ukončený \textbackslash r\textbackslash n. Výsledná veľkosť súboru sa teda skladá z fyzickej velkosti plus počet riadkov, ktoré boli ukončené iba s \textbackslash n.
+Veľkosť súborov je vypočítaná pri presune z new do cur. Kvôli rôznej reprezentácií ukončovaniá riadku na odlišných systémoch bola potreba kontorlovať tento znak. V pŕipade ak riadok končí iba \textbackslash n tak k celkovej veľkosti je prirrátaný ešte jeden bajt, kedže protokol POP3 udává že každý riadok má byť ukončený \textbackslash r\textbackslash n. Výsledná veľkosť súboru sa teda skladá z fyzickej velkosti plus počet riadkov, ktoré boli ukončené iba s \textbackslash n.
 
 
-
+Pri akejkoľvek internej chybe na serveri je vypísaná chybová hláška, klient je odpojený a vlákno sa skončí. 
 
 \subsection{Ukončenie signálom SIGINT}
 Na zachytenie signálu je použitá funkcia \texttt{signal} z knižnice \texttt{<csignal>}. Pri zachytení signálu je nastavená globálna premenná, ktorá sa kontroluje v podmienkách 

@@ -36,7 +36,7 @@ using namespace std;
 
 
 //premenna pre zaznamenie signalu SIGINT
-static int volatile geci = 0;
+static int volatile sigflag = 0;
 //premenna pre vytvaranie uidl
 int counter=0; 
 //pocitadlo beziacich vlakien
@@ -321,7 +321,7 @@ bool mySend(int socket,const char *msg,size_t msgsize){
 	int ret;
 	int size=0;
 	string message = msg ;
-	while(size != (int)msgsize && geci==0){
+	while(size != (int)msgsize && sigflag==0){
 
 		ret = send(socket,message.c_str(),message.size(),0);
 		if(ret > 0){
@@ -429,7 +429,7 @@ void* doSth(void *arg){
 	//------------------------------------------------------------------------------------------------------------------------------
 	//HLAVNA SMYCKA
 	//smycka pre zikavanie dat, kontrola flagu pri siginte
-	while (geci == 0)		
+	while (sigflag == 0)		
 	{		
 
 		bzero(buff,BUFSIZE);//vynulovanie buffera			
@@ -487,7 +487,6 @@ void* doSth(void *arg){
 			bool space = false;
 			for (unsigned int i=0; i<(message.length()); i++)
   			{
-  				//cout<< message.at(i);
   				if(i!=0 && (message.at(i) == ' ')){
   					if(space==true){
   						argument += message.at(i);
@@ -671,13 +670,12 @@ void* doSth(void *arg){
 											tmpfilename1 = tmpdir + "/"+ file->d_name;
 											tmpfilename2 = vars.maildir + "/cur/" + file->d_name;
 											if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
-												//cout << tmpfilename1 << endl;
-												//cout << tmpfilename2<< endl;
 												cerr << "chyba pri premenovani(presune) z new do cur" << endl;
 												close(acceptSocket);
 			  									pthread_mutex_unlock(&mailMutex);
 			  									//posunut vsetko naspat? 
-												exit(1);
+												threadcount--;
+												return(NULL);
 											}
 
 											//pridame nazov noveho suboru do vectoru mien
@@ -696,8 +694,6 @@ void* doSth(void *arg){
 											//pridanie absolutnej cesty do suboru potrebneho k resetu
 											resetFile << absolutePath(tmpfilename2.c_str()) << '\n';
 											counter++;
-
-
 										}
 										closedir(dir);
 
@@ -709,7 +705,7 @@ void* doSth(void *arg){
 										close(acceptSocket);
 			  							pthread_mutex_unlock(&mailMutex);
 			  							threadcount--;
-										exit(1);
+										return(NULL);
 									}	//presun do dalsieho stavu
 									
 									infoFile.close();
@@ -782,8 +778,6 @@ void* doSth(void *arg){
 								}
 							}
 
-
-							//TODO osetrit ak iba whitespace v argumente--rozdelit??????? osetrit ak iba username alebo iba apop - trebaa? vypisat ze chyba nie whitespace
 
 							//pozrieme ci 1 znak alebo posledny je space
 							int spaceloc1 = 1;
@@ -887,7 +881,8 @@ void* doSth(void *arg){
 											close(acceptSocket);
 		  									pthread_mutex_unlock(&mailMutex);
 		  									//posunut vsetko naspat? 
-											exit(1);
+											threadcount--;
+											return(NULL);
 										}
 
 										//pridame nazov suboru do vectoru mien
@@ -917,7 +912,7 @@ void* doSth(void *arg){
 									close(acceptSocket);
 		  							pthread_mutex_unlock(&mailMutex);
 		  							threadcount--;
-									exit(1);
+									return(NULL);
 								}	//presun do dalsieho stavu
 								
 								infoFile.close();
@@ -1140,7 +1135,7 @@ void* doSth(void *arg){
 	  								close(acceptSocket);
 	  								pthread_mutex_unlock(&mailMutex);
 	  								threadcount--;
-	  								exit(1);
+	  								return(NULL);
 	  							}	
   							}
   							break;
@@ -1210,7 +1205,7 @@ void* doSth(void *arg){
   								close(acceptSocket);
   								pthread_mutex_unlock(&mailMutex);
   								threadcount--;
-  								exit(1);
+  								return(NULL);
   							}	
   							break;
   						}
@@ -1326,7 +1321,6 @@ void* doSth(void *arg){
 									while(!f.eof()){
 										getline(f,tmpline);
 										if ((f.rdstate() & std::ifstream::eofbit ) != 0 ){
-											//cout << "last line" << endl;
 											
 												if(tmpline.size() > 0){//ak neni prazdny riadok
 													if(tmpline[0] == '.'){
@@ -1342,7 +1336,6 @@ void* doSth(void *arg){
 													
 												}
 											break;
-											//break;
 										}
 										//kontrola ci je na zaciatku riadku bodka, ak ano tak pridame dalsie(byte-stuff)
 										if(tmpline[0] == '.'){
@@ -1382,7 +1375,7 @@ void* doSth(void *arg){
   								close(acceptSocket);
   								pthread_mutex_unlock(&mailMutex);
   								threadcount--;
-  								exit(1);
+  								return(NULL);
   							}	
   							break;
   						}
@@ -1480,7 +1473,7 @@ void* doSth(void *arg){
   								close(acceptSocket);
   								pthread_mutex_unlock(&mailMutex);
   								threadcount--;
-  								exit(1);
+  								return(NULL);
   							}	
   							break;
   						}
@@ -1552,7 +1545,7 @@ void* doSth(void *arg){
 	  								close(acceptSocket);
 	  								pthread_mutex_unlock(&mailMutex);
 	  								threadcount--;
-	  								exit(1);
+    								return (NULL);
 	  							}	
   							}
   							else{//bol zadany argument
@@ -1656,7 +1649,8 @@ void* doSth(void *arg){
 	  								cerr << "chyba pri otvarani priecinku cur" << endl;
 	  								close(acceptSocket);
 	  								pthread_mutex_unlock(&mailMutex);
-	  								exit(1);
+    								threadcount--;
+    								return (NULL);
 	  							}	
   							}
   							break;
@@ -1668,15 +1662,10 @@ void* doSth(void *arg){
 								return(NULL);
 							}
   							break;
-  						case quit: 
-  							/*sen = mySend(acceptSocket,"+OK Server signing off\r\n",strlen("+OK Server signing off\r\n"));
-  							if(!sen){
-								//ukoncim thread ak chyba
-								return(NULL);
-							}*/
+  						case quit: //ukoncime pracu s amildirom,ide sa do stavu quit
   							state = "update";
   							break;
-  						default:
+  						default://ak zly prikaz
   							sen = mySend(acceptSocket,"-ERR Invalid command\r\n",strlen("-ERR Invalid command\r\n"));
   							if(!sen){
 								//ukoncim thread ak chyba
@@ -1767,10 +1756,10 @@ void* doSth(void *arg){
         }
         else if (errno == EAGAIN){ // == EWOULDBLOCK, ak by socket blokoval,tj. neprijima ziadne data
         	if(timestamp == 0){
-        		timestamp = (long int)time(NULL);//ak bol nulovany pridame cas ked prvy krat sa neblokovalo tj neprislo nic
+        		timestamp = (long int)time(NULL);//ak bol nulovany pridame cas ked prvy krat sa neblokovalo tj. neprislo nic
         	}
         	long int tmptime = (long int)time(NULL) - timestamp; //pozrieme rozdiel casu
-            if(tmptime >= 600){//ak preslo 10 minut
+            if(tmptime >= 600){//ak preslo 10 minut(600 sekund)
             	sen = mySend(acceptSocket,"-ERR Timeout expired\r\n",strlen("-ERR Timeout expired\r\n"));
             	if(!sen){
 					//ukoncim thread ak chyba
@@ -1788,9 +1777,9 @@ void* doSth(void *arg){
         	//odpojime klienta, skonci sa vlakno
             cerr << "Error at recv, closing client." << endl;
             pthread_mutex_unlock(&mailMutex);
-                close(acceptSocket);
-    			threadcount--;
-    			return (NULL);
+            close(acceptSocket);
+    		threadcount--;
+    		return (NULL);
         }
     }
     //ukonci sa thread
@@ -1807,7 +1796,7 @@ void signalHandler(int x)
 {
 	
 	//nastavi sa globalna premenna
-	geci = 1;
+	sigflag = 1;
 	(void)x;
 }
 
@@ -1986,7 +1975,7 @@ int main(int argc, char **argv){
     signal(SIGINT, signalHandler);
 
     //smyzka ktora prijima pripojenie a vytvara komunikacny socket
-	while(geci == 0){
+	while(sigflag == 0){
 
 		//select
 		if (select(listenSocket + 1, &set, NULL, NULL, NULL) == -1){
