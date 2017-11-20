@@ -84,14 +84,31 @@ Program je implementovaný v jazyku C/C++ s použitím povolených knižníc pot
 Pre spracovanie argumentov bola vytvorená trieda \texttt{Arguments}, ktorá obsahuje privátne premenné pre každý prepínač a jednu metódu na kontrolu argumentov. Na začiatku sa kontroluje či bol zadaný prepínač -h. Ďalej sa kontroluje či bol program spustený iba so samotným prepínačom -r. Na koniec sa povienné a volitelné parametre kontrolujú pomocou funkcie \texttt{getopts} ktorá vyhodnotí správnosť parametrov a ich hodnôt. Na začiatku main sa vytvorí objekt typu Arguments a zavolá sa metoda na spracovanie argumentov.
 
 \subsection{Pripojenie klientov}
-Sieťová komunikácia a pripojenie klientov je riešená pomocou BSD socketov. Kedže sa jedná o server ktorý je paralelný, čiže paralelne vybavuje každé pripojenie boli použité vlákna z knižnice pthread.h. Keď sa jeden klient pripojí akceptuje sa pripojenie, vytvorí sa socket cez ktorý komunikuje a ďalej jeho požiadavky sú spracované v rámci vlákna. Túto časť popisuje ďalšia kapitola.
+Sieťová komunikácia a pripojenie klientov je riešená pomocou BSD socketov. Kedže sa jedná o server ktorý je paralelný, čiže paralelne vybavuje každé pripojenie boli použité vlákna z knižnice pthread.h. Keď sa jeden klient pripojí akceptuje sa pripojenie, vytvorí sa socket cez ktorý komunikuje a ďalej jeho požiadavky sú spracované v rámci vlákna. Túto časť popisuje ďalšia kapitola. Sockety sú nastavené ako neblokujúce.
 
 \subsection{Spracovanie príkazov}
+
+Táto časť implementácie je najrozsiahlejšia. Pre spracovanie príkazov pre každého klienta je vytvorené vlákno kde sa daný klient obsluhuje. Hlavnú čast tvorí smyčka kvôli použitiu nebolkojúceho socketu v ktorej je volaná funkcia recv, kontrolujú sa jej návratové hodnoty, prípadne či by blokovala. Po úspečnom načítaní dát do bufferu nasleduje spracovanie príkazov. Stavový automat ktorý je vidno na obrázku \ref{fig:pop3FSM} je implementovaný pomocou jazykovej konštrukcie switch, kde každý case repreyentuje jeden stav. C++ neumožňuje mať reťazce vo vetvách case, preto bola vytvorená enumerácia a pomocná funkcia, ktorá mapuje reťazce na odpovedajúce hodnoty enumerácie. Podobné riešenie bolo použíté pre spracovanie príkazov, ktoré sú spracované vo vstavoch. Výsledkom je dvojúrovňový switch, kde 1. úroveň udáva stav a 2. príkaz.
+
+Ak sa príkaz spracoval a bol podporovaný nasleduje spracovanie prípadných argumentov. Pri príkazoch ktoré nemajú argument je možné zadať argument ale ten sa ignoruje. V prípadoch kde sú požadované argumenty tak sú povinné, ak nejaký chýba alebo je ich viac tak to server vyhodnotí ako chybu. Argumenty sa rozďelujú podľa medzier, výnimkou je príkaz PASS kde heslo môže obsahovať medzeru takže vlastne vždy bude mať iba jeden argument. Ak sa nepošle žiadny príkaz alebo poslaná správa nekončí dvojicou \textbackslash r\textbackslash n tak server pošle zápornú odpoveď klientovi.
+
+Pre generovanie hashu pri príkazu APOP bola použitá funkcia \texttt{MD5} z knižnice \texttt{openssl/md5.h}. Táto funkcia bola tiež použitá pre vygenerovanie unikátneho identifikátoru pre súbory kde sa hashuje konkatenácia aktuálneho času, názvu súboru a globálna číselná premenná ktorá sa inkrementuje pri každom generovaní uidl.
+
+Po úspešnej autentifikácii klienta je prevedná kontrola správnosti adresárovej štruktúry, ak je chybná tak server odpojí aktuálneho klienta. Tiež sa vykoná pokus o uzamknutie Maildiru. Pri tejto implementácií ak sa nepodarí pričinok uzamknúť tak klient je odpojený. Na uzamknutie sa používa globálna premenná typu \texttt{pthread\_mutex\_t}.    
+
+Veľkosť súborov je vypočítaná pri presune z new do cur. Kvôli rôznej reprezentácií ukončovanie riadku na odlišných systémoch bola potreba kontorlovať znak ukončenia riadku. V pŕipade ak riadok končí iba \textbackslash n tak k celkovej veľkosti je prirrátaný ešte jeden bajt, kedže protokol POP3 udává že každý riadok má byť ukončený \textbackslash r\textbackslash n. Výsledná veľkosť súboru sa teda skladá z fyzickej velkosti plus počet riadkov, ktoré boli ukončené iba s \textbackslash n.
+
+
 
 
 \subsection{Ukončenie signálom SIGINT}
 Na zachytenie signálu je použitá funkcia \texttt{signal} z knižnice \texttt{<csignal>}. Pri zachytení signálu je nastavená globálna premenná, ktorá sa kontroluje v podmienkách 
 cyklu pre prijímanie pripojení vo funkcií main a pre komunikáciu s klientom vo funkcií pre vlákno. Táto kontorla je možná kvôli použitiu neblokujúcich socketov, kde sa cyklí. Vlákno ukončí socket na ktorom kommunikuje a vhodne sa ukončí. Funkcia main čaká na ukončenie každého vlákna. Táto časť je riešená pomocou globálnej premennej, kde sa ukladá aktuálny počet vlákien. Ak sa vytvorí vlákno tak premennú inkrementuje, pri ukončení dekrementuje. Funkcia main sleduje túto premennú a ak už nie je aktívne žiadne vlákno tak zatvorí pasívny socket a skončí program.
+
+\subsection{Pomocné súbory, reset}
+Kvôli fukcie reset, udil a kvôli tomu že obsah súboru okrem príkazov RETR a TOP môžeme čítať iba raz boli zavedené pomocné súbory. Jeden súbor s názvom log.txt obsahuje potrebné informácie o súboru vo formáte názov/uidl/filesize. Ako oddelovač bolo použité lomítko, ktoré nie je povolené v názve súboru na UNIXových systémoch takže jednoznačne sa dajú určiť kde jedna informácia končí a druhá začína. Súbor obsahuje pre každý e-mail jeden riadok. 
+
+Do druhého súboru sú ukladané absolútne cesty všetkých e-mailov ktoré boli presunuté z new do cur. Pri zadaní prepínaču -r(reset) všetky súbory ktoré obsahuje súbor reset a sú fyzicky dostupné na disku sú presunuté z cur do new. Na konci sa všetky pomocné súbory vymažú.
 
 
 
@@ -120,8 +137,6 @@ cyklu pre prijímanie pripojení vo funkcií main a pre komunikáciu s klientom 
 #include <list>
 #include <vector>
 \end{lstlisting}
-
-
 
 
 \section{Použitie programu}

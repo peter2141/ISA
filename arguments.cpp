@@ -26,22 +26,39 @@ arguments::arguments(void){
 }
 
 //metody pre zistenie hodnot privatnych premennych
-int arguments::port(){return (int)port1;}
-string arguments::maildir(){return maildir1;}
-string arguments::authfile(){return authfile1;}
-bool arguments::crypt(){return crypt1;}
-bool arguments::reset(){return reset1;}
+int arguments::port(){
+	return (int)port1;
+}
+string arguments::maildir(){
+	return maildir1;
+}
+string arguments::authfile(){
+	return authfile1;
+}
+bool arguments::crypt(){
+	return crypt1;
+}
+bool arguments::reset(){
+	return reset1;
+}
 
 //metoda pre spracovanie argumentov
 void arguments::parseArgs(int argc, char **argv){
+	
 	//hladanie parametru -h(rezim 1)
 	for(int i = 1; i < argc; i++){
 		if(string(argv[i]) == "-h"){
-			cout << "HELP" << endl;
+			cout << "\nToto je POP3 server\n" << endl;
+			cout << "Použitie: \n"  << endl;
+			cout << "./popser -h pre výpis nápovedy.\n" << endl;
+			cout << "./popser -r pre vykonanie resetu.\n" << endl;
+			cout << "./popser -d path_to_maildir -a path_to_authfile -p portnum [-c] [-r] pre spustenie serveru" << endl;
+			cout << "Pri zadani parametru -r sa vykoná reset, pri zadaní -c je povolená iba nešifrovaná autentifikácia.\n" << endl;
 			pthread_mutex_destroy(&mailMutex);
 			exit(0);
 		}
 	}
+
 	//hladanie parametru -r(rezim 2)
 	if(argc==2 && (string(argv[1])=="-r")){
 		ifstream resetIn;
