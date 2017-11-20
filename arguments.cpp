@@ -89,11 +89,9 @@ void arguments::parseArgs(int argc, char **argv){
 				tmpfilename2.replace(pos,5,"/new/");
 				//presun suborov z cur do new
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
-				if(res != 0){ // preco je chyba??
-					//TODO spinavy hack(ak sa nepodarilo presunut tak subor je zmazany)
-					//continue;
+				if(res != 0){ 
 					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
-						//posunut vsetko naspat? 
+					pthread_mutex_destroy(&mailMutex);
 					exit(1);
 				}
 				tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur

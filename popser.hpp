@@ -10,7 +10,7 @@
 
 //makro na velkost bufferu pre prijimanie
 #define BUFSIZE  1024
-//makro pre frontu pri select
+//makro pre frontu pri select - staci 2, accept vzdy uvolni jeden
 #define QUEUE	2
 
 

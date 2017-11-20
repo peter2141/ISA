@@ -38,7 +38,7 @@ using namespace std;
 //premenna pre zaznamenie signalu SIGINT
 static int volatile sigflag = 0;
 //premenna pre vytvaranie uidl
-int counter=0; 
+int counter=0;
 //pocitadlo beziacich vlakien
 int threadcount = 0;
 //mutex pre uzamknutie maildiru
@@ -71,6 +71,90 @@ commands hashCommand(string command){
 	if (!command.compare("uidl")) return uidl;
 	if (!command.compare("quit")) return quit;
 	return notfound;
+}
+
+
+
+
+
+
+//zistenie cesty k binarke-k ukladaniu pomocnych suborov
+void pathToBinary(string& path){
+	char buff[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff)-1);
+    string asdpath;
+    if (len != -1) {
+      buff[len] = '\0';
+      asdpath = buff;
+    }
+    //TODO oserit ak chyba
+    size_t position = asdpath.rfind("/");
+    asdpath.erase(position+1,string::npos);
+    path = asdpath;
+}
+
+
+//nacitanie autentifikacneho suboru, kontrola chyb
+void readAuthFile(string& username, string& password,arguments args){
+    FILE *f = NULL;
+    f = fopen(args.authfile().c_str(),"r");
+    if(f == NULL){
+    	cerr << "Nespravny autentifikacny subor." << endl;
+    	pthread_mutex_destroy(&mailMutex);
+    	exit(1); 
+    }
+    int ch;
+    string tmpString="";
+    int counter = 0;
+	while ((ch = fgetc(f))  != EOF){
+		counter++;
+		tmpString += ch;
+		if(counter == 11){//ak sa nacital 11. znak(tj. nasical sme string "username = ")
+			if(tmpString == "username = "){//nacitali sme string username
+				while((ch = fgetc(f)) != '\n'){//do konca riadku nacitame prihlasovacie meno
+					username += ch;
+				}
+				tmpString = "";
+			}
+			else{
+				cerr << "Invalidny autentifikacny subor" << endl;
+				pthread_mutex_destroy(&mailMutex);
+				fclose(f);
+				exit(1);
+			}
+		}
+		else if(counter == 22){
+			if(tmpString == "password = "){
+				while((ch = fgetc(f)) != EOF){//do konca riadku nacitame prihlasovacie meno
+					//druha newlina
+					if(ch=='\n'){
+						break;
+					}
+					password += ch;
+				}
+				tmpString = "";
+				break;
+
+			}
+			else{
+				cerr << "Invalidny autentifikacny subor" << endl;
+				pthread_mutex_destroy(&mailMutex);
+				fclose(f);
+				exit(1);
+			}
+		}
+		else if(counter > 22){//okrem "username = " a "password = " je tam aj nieco ine
+			cerr << "Invalidny autentifikacny subor" << endl;
+			pthread_mutex_destroy(&mailMutex);
+			fclose(f);
+			exit(1);
+		}
+		else{
+			continue;
+		}
+	}
+
+    fclose(f);
 }
 
 
@@ -144,6 +228,10 @@ int getVirtualSize(string filename){
 	return size;
 }
 
+
+
+
+
 //ziskanie nazvov suborov v zadanom pricinku
 void getFilesInCur(vector<string>& files,string maildir){
 	DIR *tmpdir=NULL;
@@ -206,21 +294,6 @@ void createUIDL(char* filename, string& UIDL){
 }
 
 
-//zistenie cesty k binarke-k ukladaniu pomocnych suborov
-void pathToBinary(string& path){
-	char buff[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", buff, sizeof(buff)-1);
-    string asdpath;
-    if (len != -1) {
-      buff[len] = '\0';
-      asdpath = buff;
-    }
-    //TODO oserit ak chyba
-    size_t position = asdpath.rfind("/");
-    asdpath.erase(position+1,string::npos);
-    path = asdpath;
-}
-
 //kontrola spravneho formatu maildiru
 bool checkMaildir(struct threadVar args){
 
@@ -252,68 +325,6 @@ bool checkMaildir(struct threadVar args){
 }
 
 
-//nacitanie autentifikacneho suboru, kontrola chyb
-void readAuthFile(string& username, string& password,arguments args){
-    FILE *f = NULL;
-    f = fopen(args.authfile().c_str(),"r");
-    if(f == NULL){
-    	cerr << "Nespravny autentifikacny subor." << endl;
-    	pthread_mutex_destroy(&mailMutex);
-    	exit(1); 
-    }
-    int ch;
-    string tmpString="";
-    int counter = 0;
-	while ((ch = fgetc(f))  != EOF){
-		counter++;
-		tmpString += ch;
-		if(counter == 11){//ak sa nacital 11. znak(tj. nasical sme string "username = ")
-			if(tmpString == "username = "){//nacitali sme string username
-				while((ch = fgetc(f)) != '\n'){//do konca riadku nacitame prihlasovacie meno
-					username += ch;
-				}
-				tmpString = "";
-			}
-			else{
-				cerr << "Invalidny autentifikacny subor" << endl;
-				pthread_mutex_destroy(&mailMutex);
-				fclose(f);
-				exit(1);
-			}
-		}
-		else if(counter == 22){
-			if(tmpString == "password = "){
-				while((ch = fgetc(f)) != EOF){//do konca riadku nacitame prihlasovacie meno
-					//druha newlina
-					if(ch=='\n'){
-						break;
-					}
-					password += ch;
-				}
-				tmpString = "";
-				break;
-
-			}
-			else{
-				cerr << "Invalidny autentifikacny subor" << endl;
-				pthread_mutex_destroy(&mailMutex);
-				fclose(f);
-				exit(1);
-			}
-		}
-		else if(counter > 22){//okrem "username = " a "password = " je tam aj nieco ine
-			cerr << "Invalidny autentifikacny subor" << endl;
-			pthread_mutex_destroy(&mailMutex);
-			fclose(f);
-			exit(1);
-		}
-		else{
-			continue;
-		}
-	}
-
-    fclose(f);
-}
 
 
 //vlastna funkcia pre send, osetrenie chyby
@@ -1854,9 +1865,10 @@ int main(int argc, char **argv){
 				int res = rename(filename.c_str(), tmpfilename2.c_str());
 				
 				//if(rename(tmpfilename1.c_str(), tmpfilename2.c_str()) != 0){
-				if(res != 0){ // preco je chyba??
+				if(res != 0){ 
 					cerr << "chyba pri premenovani(prsune) z cur do new" << endl;
-					//posunut vsetko naspat? pokracovat?  
+					//posunut vsetko naspat? pokracovat?
+					pthread_mutex_destroy(&mailMutex);  
 					exit(1);
 				}
 			}
