@@ -96,7 +96,7 @@ void arguments::parseArgs(int argc, char **argv){
 				}
 				tmppath.erase(pos,string::npos);//vymazeme z cesty suboru vsetko od Maildir-ziskame cestu k maildiru, potreba pri mazani moznych suborov co sotali v cur
 			}
-			
+			resetIn.close();
 
 			//odstranenie pomocnych suborov 
 			if(remove("reset.txt")!=0){
@@ -106,33 +106,7 @@ void arguments::parseArgs(int argc, char **argv){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
 
-
-
-
-			//odstranit vsetko ine z cur
-			DIR * dir;
-			struct dirent *file;
-			string tmpdir = tmppath + "/cur";//ak reset prazdny? nemoze byt prazdny!!!
-			string tmpfilename;
-			if((dir = opendir(tmpdir.c_str())) != NULL){
-				while((file = readdir(dir)) != NULL){
-					if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
-						continue;
-					}
-					tmpfilename = tmpdir + "/"+ file->d_name;
-					if(remove(tmpfilename.c_str())!=0){
-						cerr << "Chyba pri mazani suboru z cur." << endl;
-					}
-				}
-				closedir(dir);
-			}
-			else{//problem s cur priecinkom, ukoncime program
-				cerr << "Chyba pri otvarani priecinku cur" << endl;
-				pthread_mutex_destroy(&mailMutex);
-				exit(1);
-			}
-		
-			resetIn.close();
+			
 		}
 
 		pthread_mutex_destroy(&mailMutex);

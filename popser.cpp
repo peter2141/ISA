@@ -74,10 +74,6 @@ commands hashCommand(string command){
 }
 
 
-
-
-
-
 //zistenie cesty k binarke-k ukladaniu pomocnych suborov
 void pathToBinary(string& path){
 	char buff[PATH_MAX];
@@ -790,7 +786,7 @@ void* doSth(void *arg){
 							}
 
 
-							//pozrieme ci 1 znak alebo posledny je space
+							//pozrieme ci 1. znak alebo posledny je space
 							int spaceloc1 = 1;
 							int spaceloc2 = 0;
 						 	spaceloc1 = argument.find(" ");
@@ -1153,7 +1149,6 @@ void* doSth(void *arg){
   						}
 
   						case staat:{
-  							// https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
   							DIR *d = NULL;
   							//struct dirent *file;
   							string tmpdir = vars.maildir + "/cur";
@@ -1881,29 +1876,6 @@ int main(int argc, char **argv){
 			if(remove("info.txt")!=0){
 				cerr << "Chyba pri mazani pomocneho suboru na ukladanie informacii o mailov" << endl;
 			}
-
-			//odstranit vsetko ostatne z cur
-			DIR* dir;
-			struct dirent *file;
-			string tmpdir = tmp.maildir + "/cur";
-			string tmpfilename;
-			if((dir = opendir(tmpdir.c_str())) != NULL){
-				while((file = readdir(dir)) != NULL){
-					if(!strcmp(file->d_name,".") || !strcmp(file->d_name,"..") ){
-						continue;
-					}
-					tmpfilename = tmpdir + "/"+ file->d_name;
-					if(remove(tmpfilename.c_str())!=0){
-						cerr << "Chyba pri mazani pomocneho suboru na ukladanie presunov z new do cur" << endl;
-					}
-				}
-				closedir(dir);
-			}
-			else{//problem s cur priecinkom, ukoncime program
-				cerr << "chyba pri otvarani priecinku cur" << endl;
-				pthread_mutex_destroy(&mailMutex);
-				exit(1);
-			}	
 		}
 	}
 
